@@ -1,0 +1,513 @@
+// Webscale — Training CRM
+// Domain: leads, students, instructors, courses, sessions, registrations,
+// attendance, payments, campaigns, communications, landing pages.
+// See DESIGN.md §2 (Product vision) and §29 (Component architecture).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================================
+// Auth.js — employees who log into the CRM
+// ==========================================================
+
+model User {
+  id             String    @id @default(cuid())
+  name           String?
+  email          String    @unique
+  emailVerified  DateTime?
+  image          String?
+  hashedPassword String?
+  role           UserRole  @default(EMPLOYEE)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  accounts       Account[]
+  sessions       Session[]
+
+  ownedLeads     Lead[]           @relation("LeadOwner")
+  createdCourses Course[]         @relation("CourseCreatedBy")
+  instructor     Instructor?
+  activities     Activity[]
+  communications Communication[]  @relation("CommunicationSentBy")
+  attendance     Attendance[]     @relation("AttendanceRecordedBy")
+  landingPages   LandingPage[]    @relation("LandingPageCreatedBy")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  SALES
+  MARKETING
+  TRAINER
+  FINANCE
+  EMPLOYEE
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==========================================================
+// CRM — sales pipeline
+// ==========================================================
+
+model Lead {
+  id         String     @id @default(cuid())
+  firstName  String
+  lastName   String?
+  email      String?
+  phone      String?
+  status     LeadStatus @default(NEW)
+  source     String?
+  notes      String?    @db.Text
+  tags       String[]   @default([])
+
+  ownerId    String?
+  campaignId String?
+  courseId   String?    // course this lead is interested in (from landing page)
+  studentId  String?    // set when the lead converts
+
+  // Retargeting / attribution — kept even after conversion so we can run
+  // future campaigns against past leads.
+  subscribed   Boolean @default(true)   // marketing consent from the form
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  lastContactedAt DateTime?
+
+  owner          User?           @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  campaign       Campaign?       @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  course         Course?         @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  student        Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  communications Communication[]
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([campaignId])
+  @@index([courseId])
+  @@index([createdAt])   // dashboard KPIs + reports use 30-day windows on this field
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  INTERESTED
+  FOLLOW_UP
+  REGISTERED
+  LOST
+}
+
+// ==========================================================
+// People — students & instructors
+// ==========================================================
+
+model Student {
+  id          String   @id @default(cuid())
+  firstName   String
+  lastName    String?
+  email       String?  @unique
+  phone       String?
+  dateOfBirth DateTime?
+  address     String?
+  notes       String?  @db.Text
+  tags        String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads          Lead[]
+  registrations  Registration[]
+  payments       Payment[]
+  communications Communication[]
+}
+
+model Instructor {
+  id        String   @id @default(cuid())
+  firstName String
+  lastName  String?
+  email     String?  @unique
+  phone     String?
+  bio       String?  @db.Text
+  avatarUrl String?
+  expertise String[] @default([])
+  userId    String?  @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  courses  Course[]        @relation("CoursePrimaryInstructor")
+  sessions CourseSession[]
+}
+
+// ==========================================================
+// Courses & sessions
+// ==========================================================
+
+model Course {
+  id            String       @id @default(cuid())
+  name          String
+  slug          String       @unique
+  description   String?      @db.Text
+  summary       String?
+  category      String?
+  imageUrl      String?
+  level         CourseLevel  @default(BEGINNER)
+  durationHours Int?
+  basePrice     Decimal?     @db.Decimal(12, 2)
+  currency      String       @default("USD")
+  status        CourseStatus @default(DRAFT)
+
+  primaryInstructorId String?
+  createdById         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  primaryInstructor Instructor?   @relation("CoursePrimaryInstructor", fields: [primaryInstructorId], references: [id], onDelete: SetNull)
+  createdBy         User?         @relation("CourseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  sessions          CourseSession[]
+  landingPages      LandingPage[]
+  leads             Lead[]
+
+  @@index([status])
+  @@index([category])
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CourseLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  PROFESSIONAL
+}
+
+// A specific cohort/instance of a course (has real dates, capacity, location).
+model CourseSession {
+  id           String        @id @default(cuid())
+  courseId     String
+  instructorId String?
+  title        String?
+  startDate    DateTime
+  endDate      DateTime
+  location     String?
+  city         String?
+  country      String?
+  capacity     Int           @default(20)
+  price        Decimal?      @db.Decimal(12, 2)
+  status       SessionStatus @default(UPCOMING)
+  notes        String?       @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  course        Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  instructor    Instructor?    @relation(fields: [instructorId], references: [id], onDelete: SetNull)
+  registrations Registration[]
+  attendance    Attendance[]
+
+  @@index([courseId])
+  @@index([status])
+  @@index([startDate])
+}
+
+enum SessionStatus {
+  DRAFT
+  UPCOMING
+  OPEN
+  FULL
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// ==========================================================
+// Registrations, attendance, payments
+// ==========================================================
+
+model Registration {
+  id           String             @id @default(cuid())
+  studentId    String
+  sessionId    String
+  status       RegistrationStatus @default(PENDING)
+  source       String?
+  registeredAt DateTime           @default(now())
+  confirmedAt  DateTime?
+  cancelledAt  DateTime?
+  notes        String?            @db.Text
+
+  student    Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  session    CourseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  payments   Payment[]
+  attendance Attendance[]
+
+  @@unique([studentId, sessionId])
+  @@index([status])
+  @@index([sessionId])     // FK lookup in getRegistrationsForSession; unique covers studentId prefix already
+  @@index([registeredAt])  // dashboard new-registrations KPI + reports date range queries
+}
+
+enum RegistrationStatus {
+  PENDING
+  CONFIRMED
+  ATTENDING
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model Attendance {
+  id             String           @id @default(cuid())
+  registrationId String
+  sessionId      String
+  sessionDate    DateTime         @db.Date
+  status         AttendanceStatus @default(PRESENT)
+  notes          String?
+  recordedById   String?
+  recordedAt     DateTime         @default(now())
+
+  registration Registration  @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  session      CourseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  recordedBy   User?         @relation("AttendanceRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([registrationId, sessionDate])
+  @@index([sessionId, sessionDate])
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  studentId      String
+  registrationId String?
+  amount         Decimal       @db.Decimal(12, 2)
+  currency       String        @default("USD")
+  method         PaymentMethod @default(CASH)
+  status         PaymentStatus @default(PENDING)
+  reference      String?
+  notes          String?       @db.Text
+  paidAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student      Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  registration Registration? @relation(fields: [registrationId], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@index([status])
+  @@index([paidAt])
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  ONLINE
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// ==========================================================
+// Marketing — campaigns & communications
+// ==========================================================
+
+model Campaign {
+  id          String         @id @default(cuid())
+  name        String
+  description String?        @db.Text
+  source      String?
+  budget      Decimal?       @db.Decimal(12, 2)
+  status      CampaignStatus @default(DRAFT)
+  startDate   DateTime?
+  endDate     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads Lead[]
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+model Communication {
+  id        String                 @id @default(cuid())
+  type      CommunicationType
+  channel   String?
+  direction CommunicationDirection @default(OUTBOUND)
+  subject   String?
+  body      String?                @db.Text
+
+  leadId    String?
+  studentId String?
+  sentById  String?
+  sentAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  lead    Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  student Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  sentBy  User?    @relation("CommunicationSentBy", fields: [sentById], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@index([studentId])
+  @@index([createdAt])
+}
+
+enum CommunicationType {
+  CALL
+  EMAIL
+  SMS
+  WHATSAPP
+  MEETING
+  NOTE
+}
+
+enum CommunicationDirection {
+  INBOUND
+  OUTBOUND
+}
+
+// ==========================================================
+// Activity feed — user actions across the system
+// ==========================================================
+
+model Activity {
+  id       String   @id @default(cuid())
+  type     String   // e.g. "lead.created", "course.published"
+  entity   String   // "Lead" | "Course" | ...
+  entityId String
+  userId   String?
+  meta     Json?
+
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ==========================================================
+// Landing pages — data-driven blocks
+// See DESIGN.md §12–15 (Builder), §29 (LandingBlock type)
+// ==========================================================
+
+model LandingPage {
+  id             String            @id @default(cuid())
+  courseId       String?
+  slug           String            @unique
+  title          String
+  status         LandingPageStatus @default(DRAFT)
+  blocks         Json              @default("[]")
+  theme          Json              @default("{}")
+  seoTitle       String?
+  seoDescription String?
+  ogImageUrl     String?
+  publishedAt    DateTime?
+
+  templateId  String?
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  course    Course?              @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  template  LandingPageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  createdBy User?                @relation("LandingPageCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([courseId])
+}
+
+enum LandingPageStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model LandingPageTemplate {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  category        String?
+  previewImageUrl String?
+  blocks          Json     @default("[]")
+  theme           Json     @default("{}")
+  isBuiltin       Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  pages LandingPage[]
+}
+
+// Singleton row (id = "default") for org-wide configuration.
+model OrgSettings {
+  id          String   @id @default("default")
+  name        String   @default("My Organization")
+  currency    String   @default("USD")
+  timezone    String   @default("UTC")
+  updatedAt   DateTime @updatedAt
+}
