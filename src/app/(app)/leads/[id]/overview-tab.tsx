@@ -2,8 +2,18 @@ import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { BookOpen, Calendar, Mail, Megaphone, Phone, User } from "lucide-react";
 import type { LeadDetail } from "../actions";
+import { NextActionSection } from "./next-action-section";
+import { QuickActionsRow } from "./quick-actions-row";
 
-export function OverviewTab({ lead }: { lead: LeadDetail }) {
+type UserPickerItem = { id: string; name: string | null; email: string };
+
+export function OverviewTab({
+  lead,
+  users,
+}: {
+  lead: LeadDetail;
+  users: UserPickerItem[];
+}) {
   const facts: Array<{
     label: string;
     value: React.ReactNode;
@@ -48,6 +58,12 @@ export function OverviewTab({ lead }: { lead: LeadDetail }) {
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <div className="space-y-4 lg:col-span-2">
+        {/* Quick log shortcuts */}
+        <QuickActionsRow leadId={lead.id} />
+
+        {/* Next action — most important, shown first */}
+        <NextActionSection lead={lead} users={users} />
+
         <section className="rounded-xl border border-border/60 bg-card p-6">
           <h2 className="mb-3 text-sm font-semibold tracking-tight">
             About this lead

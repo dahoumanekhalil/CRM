@@ -23,6 +23,11 @@ export const leadFormSubmissionSchema = z.object({
   message: trimmedMax(2000).default(""),
   subscribed: z.boolean().default(true),
 
+  // Honeypot — this field is hidden from real users (display:none, tabIndex=-1).
+  // Bots that auto-fill all inputs will populate it. Server silently discards
+  // the submission when non-empty so the bot gets no signal it was blocked.
+  hp: z.string().max(200).optional(),
+
   // Attribution — silently captured from URL params on the visitor's browser.
   // Anything malformed is dropped rather than rejected.
   utmSource: trimmedMax(80).optional(),

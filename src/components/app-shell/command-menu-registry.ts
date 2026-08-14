@@ -2,6 +2,7 @@ import {
   BarChart3,
   BookOpen,
   CalendarDays,
+  CheckSquare,
   ClipboardCheck,
   Contact,
   Globe,
@@ -51,6 +52,15 @@ export interface StaticCommand {
 // palette picks them up automatically.
 export const COMMANDS: readonly StaticCommand[] = [
   // ─── Create ─────────────────────────────────────────────
+  {
+    id: "create.task",
+    group: "create",
+    label: "Create task",
+    keywords: ["new", "add", "task", "todo", "reminder", "follow-up"],
+    icon: Plus,
+    href: "/tasks?new=1",
+    available: true,
+  },
   {
     id: "create.course",
     group: "create",
@@ -127,6 +137,15 @@ export const COMMANDS: readonly StaticCommand[] = [
   },
 
   // ─── Go to ──────────────────────────────────────────────
+  {
+    id: "goto.tasks",
+    group: "goto",
+    label: "Tasks",
+    keywords: ["todos", "reminders", "follow-ups", "actions"],
+    icon: CheckSquare,
+    href: "/tasks",
+    available: true,
+  },
   {
     id: "goto.dashboard",
     group: "goto",
@@ -237,7 +256,7 @@ export const COMMANDS: readonly StaticCommand[] = [
     icon: Receipt,
     href: "/transactions",
     roles: ["ADMIN", "MANAGER", "FINANCE"],
-    available: false,
+    available: true,
   },
   {
     id: "goto.reports",

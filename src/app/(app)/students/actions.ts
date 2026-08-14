@@ -151,6 +151,26 @@ export async function deleteStudent(id: string): Promise<Result<null>> {
   }
 }
 
+export async function updateStudentNotes(
+  studentId: string,
+  notes: string
+): Promise<Result<null>> {
+  await requireSession();
+  const trimmed = notes.trim();
+  try {
+    await prisma.student.update({
+      where: { id: studentId },
+      data: { notes: trimmed === "" || trimmed === "<p></p>" ? null : trimmed },
+      select: { id: true },
+    });
+    revalidatePath(`/students/${studentId}`);
+    return { ok: true, data: null };
+  } catch (err) {
+    console.error("updateStudentNotes failed", err);
+    return { ok: false, error: "Couldn't save the notes. Please try again." };
+  }
+}
+
 export async function listStudents(input: ListStudentsInput) {
   const parsed = listStudentsSchema.parse(input);
   await requireSession();

@@ -87,6 +87,43 @@ const formPropsSchema = z.object({
   privacyNote: optStr(300),
 });
 
+const testimonialsPropsSchema = z.object({
+  heading: optStr(120),
+  subheading: optStr(300),
+  items: z.array(z.object({
+    quote: z.string().min(1).max(800),
+    name: z.string().min(1).max(80),
+    role: optStr(80),
+    rating: z.number().int().min(1).max(5).optional(),
+  })).min(1).max(12),
+});
+
+const benefitsPropsSchema = z.object({
+  heading: optStr(120),
+  subheading: optStr(300),
+  items: z.array(z.string().min(1).max(200)).min(1).max(20),
+  columns: z.union([z.literal(1), z.literal(2)]).optional(),
+});
+
+const curriculumPropsSchema = z.object({
+  heading: optStr(120),
+  subheading: optStr(300),
+  modules: z.array(z.object({
+    title: z.string().min(1).max(120),
+    duration: optStr(30),
+    lessons: z.array(z.string().min(1).max(200)).max(20),
+  })).min(1).max(20),
+});
+
+const socialProofPropsSchema = z.object({
+  heading: optStr(120),
+  stats: z.array(z.object({
+    value: z.string().min(1).max(30),
+    label: z.string().min(1).max(60),
+  })).min(1).max(8),
+  note: optStr(200),
+});
+
 export const blockSchema = z.discriminatedUnion("type", [
   z.object({ id: z.string(), type: z.literal("hero"), props: heroPropsSchema }),
   z.object({ id: z.string(), type: z.literal("features"), props: featuresPropsSchema }),
@@ -95,6 +132,10 @@ export const blockSchema = z.discriminatedUnion("type", [
   z.object({ id: z.string(), type: z.literal("faq"), props: faqPropsSchema }),
   z.object({ id: z.string(), type: z.literal("cta"), props: ctaPropsSchema }),
   z.object({ id: z.string(), type: z.literal("form"), props: formPropsSchema }),
+  z.object({ id: z.string(), type: z.literal("testimonials"), props: testimonialsPropsSchema }),
+  z.object({ id: z.string(), type: z.literal("benefits"), props: benefitsPropsSchema }),
+  z.object({ id: z.string(), type: z.literal("curriculum"), props: curriculumPropsSchema }),
+  z.object({ id: z.string(), type: z.literal("social-proof"), props: socialProofPropsSchema }),
 ]);
 
 export const themeSchema = z.object({

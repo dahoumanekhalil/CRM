@@ -8,7 +8,11 @@ export type BlockType =
   | "pricing"
   | "faq"
   | "cta"
-  | "form";
+  | "form"
+  | "testimonials"
+  | "benefits"
+  | "curriculum"
+  | "social-proof";
 
 export interface HeroProps {
   eyebrow?: string;
@@ -63,6 +67,43 @@ export interface CTAProps {
   ctaHref?: string;
 }
 
+export interface TestimonialsProps {
+  heading?: string;
+  subheading?: string;
+  items: Array<{
+    quote: string;
+    name: string;
+    role?: string;
+    rating?: number;
+  }>;
+}
+
+export interface BenefitsProps {
+  heading?: string;
+  subheading?: string;
+  items: string[];
+  columns?: 1 | 2;
+}
+
+export interface CurriculumProps {
+  heading?: string;
+  subheading?: string;
+  modules: Array<{
+    title: string;
+    duration?: string;
+    lessons: string[];
+  }>;
+}
+
+export interface SocialProofProps {
+  heading?: string;
+  stats: Array<{
+    value: string;
+    label: string;
+  }>;
+  note?: string;
+}
+
 export interface FormProps {
   heading?: string;
   subheading?: string;
@@ -88,6 +129,10 @@ export type BlockPropsByType = {
   faq: FAQProps;
   cta: CTAProps;
   form: FormProps;
+  testimonials: TestimonialsProps;
+  benefits: BenefitsProps;
+  curriculum: CurriculumProps;
+  "social-proof": SocialProofProps;
 };
 
 export type LandingBlock = {

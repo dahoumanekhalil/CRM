@@ -3,6 +3,7 @@ import {
   LeadStatus,
   CourseStatus,
   CourseLevel,
+  SessionStatus,
 } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -210,6 +211,113 @@ const sampleCourses: Array<{
   },
 ];
 
+// Helper: build a date relative to today
+function daysFromNow(n: number, hour = 9): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  d.setHours(hour, 0, 0, 0);
+  return d;
+}
+
+type SessionSeed = {
+  courseSlug: string;
+  title?: string;
+  startDate: Date;
+  endDate: Date;
+  location: string;
+  city: string;
+  capacity: number;
+  price?: number;
+  status: SessionStatus;
+};
+
+const sampleSessions: SessionSeed[] = [
+  // AI Foundations — session running today
+  {
+    courseSlug: "ai-foundations-for-business",
+    title: "AI Foundations — August 2026",
+    startDate: daysFromNow(0, 9),
+    endDate: daysFromNow(2, 17),
+    location: "Webscale Training Center, Floor 3",
+    city: "Dubai",
+    capacity: 20,
+    price: 1490,
+    status: "IN_PROGRESS",
+  },
+  // AI Foundations — upcoming
+  {
+    courseSlug: "ai-foundations-for-business",
+    title: "AI Foundations — September 2026",
+    startDate: daysFromNow(18, 9),
+    endDate: daysFromNow(20, 17),
+    location: "Webscale Training Center, Floor 3",
+    city: "Dubai",
+    capacity: 20,
+    price: 1490,
+    status: "OPEN",
+  },
+  // Digital Marketing — starting in 3 days
+  {
+    courseSlug: "advanced-digital-marketing",
+    title: "Digital Marketing — Aug/Sep 2026",
+    startDate: daysFromNow(3, 9),
+    endDate: daysFromNow(10, 17),
+    location: "Innovation Hub, Room B2",
+    city: "Riyadh",
+    capacity: 15,
+    price: 1990,
+    status: "UPCOMING",
+  },
+  // Leadership Bootcamp — full, upcoming
+  {
+    courseSlug: "leadership-bootcamp",
+    title: "Leadership Bootcamp — Q3 2026",
+    startDate: daysFromNow(7, 8),
+    endDate: daysFromNow(11, 18),
+    location: "Grand Rotana Hotel",
+    city: "Abu Dhabi",
+    capacity: 12,
+    price: 2490,
+    status: "FULL",
+  },
+  // Leadership Bootcamp — next cohort open
+  {
+    courseSlug: "leadership-bootcamp",
+    title: "Leadership Bootcamp — Q4 2026",
+    startDate: daysFromNow(45, 8),
+    endDate: daysFromNow(49, 18),
+    location: "Grand Rotana Hotel",
+    city: "Abu Dhabi",
+    capacity: 12,
+    price: 2490,
+    status: "OPEN",
+  },
+  // Product Design Sprint — past (completed)
+  {
+    courseSlug: "product-design-sprint",
+    title: "Design Sprint — July 2026",
+    startDate: daysFromNow(-20, 9),
+    endDate: daysFromNow(-16, 17),
+    location: "Co-Create Studio",
+    city: "Dubai",
+    capacity: 18,
+    price: 1290,
+    status: "COMPLETED",
+  },
+  // Financial Modeling — upcoming
+  {
+    courseSlug: "financial-modeling-essentials",
+    title: "Financial Modeling — September 2026",
+    startDate: daysFromNow(22, 9),
+    endDate: daysFromNow(24, 17),
+    location: "Webscale Training Center, Floor 2",
+    city: "Dubai",
+    capacity: 16,
+    price: 990,
+    status: "UPCOMING",
+  },
+];
+
 async function main() {
   console.log("Seeding…");
 
@@ -237,9 +345,40 @@ async function main() {
     });
   }
 
+  // Sessions — skip if the course already has sessions (idempotent)
+  for (const s of sampleSessions) {
+    const course = await prisma.course.findUnique({
+      where: { slug: s.courseSlug },
+      select: { id: true },
+    });
+    if (!course) continue;
+
+    const existing = await prisma.courseSession.findFirst({
+      where: { courseId: course.id, title: s.title ?? undefined },
+    });
+    if (existing) continue;
+
+    await prisma.courseSession.create({
+      data: {
+        courseId: course.id,
+        title: s.title,
+        startDate: s.startDate,
+        endDate: s.endDate,
+        location: s.location,
+        city: s.city,
+        capacity: s.capacity,
+        price: s.price,
+        status: s.status,
+      },
+    });
+  }
+
   const leadCount = await prisma.lead.count();
   const courseCount = await prisma.course.count();
-  console.log(`Done. Leads: ${leadCount}, Courses: ${courseCount}`);
+  const sessionCount = await prisma.courseSession.count();
+  console.log(
+    `Done. Leads: ${leadCount}, Courses: ${courseCount}, Sessions: ${sessionCount}`
+  );
 }
 
 main()

@@ -246,7 +246,7 @@ export function CallOutcomePrompt() {
                 type="button"
                 onClick={() => setSelected(active ? null : o)}
                 className={cn(
-                  "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-all",
+                  "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-start text-xs font-medium transition-all",
                   active
                     ? cn(o.color, "ring-2 ring-current ring-offset-1")
                     : cn(o.color, "opacity-80")

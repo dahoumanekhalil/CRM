@@ -11,9 +11,10 @@ import { DirectionToggle } from "./direction-toggle";
 
 interface AppTopbarProps {
   onOpenCommand: () => void;
+  onOpenQuickCreate?: () => void;
 }
 
-export function AppTopbar({ onOpenCommand }: AppTopbarProps) {
+export function AppTopbar({ onOpenCommand, onOpenQuickCreate }: AppTopbarProps) {
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border/70 bg-background/80 px-3 backdrop-blur-md md:px-4">
       <SidebarTrigger className="-ms-1" />
@@ -32,8 +33,16 @@ export function AppTopbar({ onOpenCommand }: AppTopbarProps) {
       </button>
 
       <div className="ms-auto flex items-center gap-1">
-        <Button size="sm" className="hidden md:inline-flex">
+        <Button
+          size="sm"
+          className="hidden md:inline-flex"
+          onClick={onOpenQuickCreate}
+          title="Quick create (C)"
+        >
           <Plus /> Create
+          <Kbd className="ms-1 border-primary-foreground/30 bg-primary-foreground/10 text-primary-foreground/80">
+            C
+          </Kbd>
         </Button>
         <DirectionToggle />
         <ThemeToggle />

@@ -30,13 +30,15 @@ model User {
   accounts       Account[]
   sessions       Session[]
 
-  ownedLeads     Lead[]           @relation("LeadOwner")
-  createdCourses Course[]         @relation("CourseCreatedBy")
-  instructor     Instructor?
-  activities     Activity[]
-  communications Communication[]  @relation("CommunicationSentBy")
-  attendance     Attendance[]     @relation("AttendanceRecordedBy")
-  landingPages   LandingPage[]    @relation("LandingPageCreatedBy")
+  ownedLeads        Lead[]           @relation("LeadOwner")
+  nextActionLeads   Lead[]           @relation("LeadNextActionOwner")
+  createdCourses    Course[]         @relation("CourseCreatedBy")
+  instructor        Instructor?
+  activities        Activity[]
+  communications    Communication[]  @relation("CommunicationSentBy")
+  attendance        Attendance[]     @relation("AttendanceRecordedBy")
+  landingPages      LandingPage[]    @relation("LandingPageCreatedBy")
+  tasks             Task[]           @relation("TaskOwner")
 }
 
 enum UserRole {
@@ -103,6 +105,7 @@ model Lead {
   campaignId String?
   courseId   String?    // course this lead is interested in (from landing page)
   studentId  String?    // set when the lead converts
+  isHighPriority Boolean @default(false)
 
   // Retargeting / attribution — kept even after conversion so we can run
   // future campaigns against past leads.
@@ -111,15 +114,21 @@ model Lead {
   utmMedium    String?
   utmCampaign  String?
 
+  // Next action — the single most important follow-up step for this lead.
+  nextAction        String?
+  nextActionDue     DateTime?
+  nextActionOwnerId String?
+
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
   lastContactedAt DateTime?
 
-  owner          User?           @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  campaign       Campaign?       @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  course         Course?         @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  student        Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
-  communications Communication[]
+  owner             User?           @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  nextActionOwner   User?           @relation("LeadNextActionOwner", fields: [nextActionOwnerId], references: [id], onDelete: SetNull)
+  campaign          Campaign?       @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  course            Course?         @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  student           Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  communications    Communication[]
 
   @@index([status])
   @@index([ownerId])
@@ -501,6 +510,48 @@ model LandingPageTemplate {
   createdAt DateTime @default(now())
 
   pages LandingPage[]
+}
+
+// ==========================================================
+// Tasks — cross-cutting accountability & follow-up engine
+// See LEVEL2.md §A1 (Task Engine)
+// ==========================================================
+
+model Task {
+  id          String       @id @default(cuid())
+  title       String
+  description String?      @db.Text
+  ownerId     String?
+  priority    TaskPriority @default(NORMAL)
+  status      TaskStatus   @default(TODO)
+  dueDate     DateTime?
+  entityType  String?      // "Lead" | "Student" | "Course" | "Session" | "Payment" | "Campaign" | "LandingPage"
+  entityId    String?
+  source      String       @default("manual") // "manual" | "system"
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  completedAt DateTime?
+
+  owner User? @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([entityType, entityId])
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
 }
 
 // Singleton row (id = "default") for org-wide configuration.

@@ -7,6 +7,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "./app-sidebar";
 import { AppTopbar } from "./app-topbar";
 import { CommandMenu } from "./command-menu";
+import { QuickCreateMenu } from "./quick-create-menu";
 
 export function AppShell({
   session,
@@ -16,6 +17,31 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const [commandOpen, setCommandOpen] = React.useState(false);
+  const [quickCreateOpen, setQuickCreateOpen] = React.useState(false);
+
+  // Global `c` shortcut — opens quick-create when not typing in an input.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "c" && e.key !== "C") return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+
+      const target = e.target as Element | null;
+      const isEditing =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+      if (isEditing) return;
+
+      // Don't fire if either menu is already open.
+      if (commandOpen || quickCreateOpen) return;
+
+      e.preventDefault();
+      setQuickCreateOpen(true);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [commandOpen, quickCreateOpen]);
 
   return (
     <SidebarProvider>
@@ -27,6 +53,11 @@ export function AppShell({
       <CommandMenu
         open={commandOpen}
         onOpenChange={setCommandOpen}
+        userRole={session?.user?.role}
+      />
+      <QuickCreateMenu
+        open={quickCreateOpen}
+        onClose={() => setQuickCreateOpen(false)}
         userRole={session?.user?.role}
       />
     </SidebarProvider>

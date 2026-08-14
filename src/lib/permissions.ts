@@ -81,6 +81,10 @@ export const PERMISSIONS = {
   // Insights
   "reports.view": MANAGERS,
 
+  // Tasks — all roles can create and view (scoped by ownership in the query layer)
+  "tasks.view": ALL_ROLES,
+  "tasks.write": ALL_ROLES,
+
   // Settings — Admin only.
   "settings.view": ["ADMIN"] as const,
   "settings.write": ["ADMIN"] as const,

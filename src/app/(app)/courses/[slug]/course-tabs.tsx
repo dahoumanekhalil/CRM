@@ -51,7 +51,8 @@ export function CourseTabsView({
       onValueChange={(v) => void setTab(v as TabValue, { scroll: false })}
       className="gap-6"
     >
-      <TabsList variant="line" className="w-full justify-start border-b border-border/60">
+      <div className="overflow-x-auto border-b border-border/60">
+      <TabsList variant="line" className="w-max min-w-full justify-start">
         <TabsTrigger value="overview">
           <Info /> Overview
         </TabsTrigger>
@@ -74,6 +75,7 @@ export function CourseTabsView({
           <Wallet /> Payments
         </TabsTrigger>
       </TabsList>
+      </div>
 
       <TabsContent value="overview">
         <OverviewTab detail={detail} />

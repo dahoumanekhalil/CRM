@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { RegistrationStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getLeadDetail } from "../actions";
+import { getLeadDetail, listLeadsUsers } from "../actions";
 import { LeadHeader } from "./lead-header";
 import { LeadTabsView } from "./lead-tabs";
 import { OverviewTab } from "./overview-tab";
@@ -72,7 +72,10 @@ export default async function LeadDetailPage({
   params: Params;
 }) {
   const { id } = await params;
-  const lead = await getLeadDetail(id);
+  const [lead, users] = await Promise.all([
+    getLeadDetail(id),
+    listLeadsUsers(),
+  ]);
   if (!lead) notFound();
 
   const sessionsForCourse = await loadSessionsForConvert(lead.courseId);
@@ -83,7 +86,7 @@ export default async function LeadDetailPage({
       <div className="flex-1 p-6">
         <LeadTabsView
           lead={lead}
-          overviewSlot={<OverviewTab lead={lead} />}
+          overviewSlot={<OverviewTab lead={lead} users={users} />}
           communicationsSlot={<LeadCommunicationsTab leadId={lead.id} />}
           notesSlot={<NotesTab lead={lead} />}
           attributionSlot={<AttributionTab lead={lead} />}

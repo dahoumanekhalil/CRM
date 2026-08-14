@@ -195,3 +195,95 @@
     background: transparent;
   }
 }
+
+/* ============================================================
+   ARABIC / RTL SUPPORT  (DESIGN.md §24)
+   The direction toggle writes dir="rtl" + lang="ar" to <html>.
+   These rules activate automatically — no class toggling needed.
+   ============================================================ */
+
+/* Switch to Arabic typeface in RTL mode */
+[dir="rtl"] {
+  font-family: var(--font-arabic), var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Directional icons — arrows and chevrons must mirror in RTL.
+   Add .rtl-flip to any icon that implies a left/right direction. */
+[dir="rtl"] .rtl-flip {
+  transform: scaleX(-1);
+}
+
+/* Radix dropdown sub-trigger chevron points right in LTR → left in RTL */
+[dir="rtl"] [data-radix-dropdown-menu-sub-trigger] > svg:last-child {
+  transform: scaleX(-1);
+}
+
+/* Sidebar rail resize handle needs to re-anchor in RTL
+   (handled by shadcn's side="right" prop — this just ensures
+   the drag affordance line stays on the correct edge) */
+[dir="rtl"] [data-sidebar="rail"] {
+  left: auto;
+}
+
+/* ============================================================
+   MICRO-INTERACTIONS  (DESIGN.md §25)
+   Purposeful, not decorative. Everything at duration-150 ease-out
+   so the UI feels responsive, not animated.
+   ============================================================ */
+
+/* Stat cards lift very slightly on hover — reinforces that they're clickable. */
+a[href] [data-slot="card"],
+a[href][data-slot="card"] {
+  transition: box-shadow 150ms ease-out, transform 150ms ease-out;
+}
+a[href]:hover [data-slot="card"],
+a[href]:hover[data-slot="card"] {
+  transform: translateY(-1px);
+}
+
+/* Entity cards in tables / lists */
+[data-slot="table-row"] {
+  transition: background-color 100ms ease-out;
+}
+
+/* Sidebar nav items already have their own transitions via shadcn.
+   This adds a subtle left-border indicator for active state. */
+[data-sidebar="menu-button"][data-active="true"] {
+  position: relative;
+}
+
+/* Tab triggers — gentle underline sweep */
+[role="tab"] {
+  transition: color 150ms ease-out, border-color 150ms ease-out;
+}
+
+/* Buttons — add a pressed feel without a heavy effect */
+button:active:not(:disabled),
+[role="button"]:active:not([aria-disabled="true"]) {
+  transform: scale(0.975);
+  transition: transform 80ms ease-out;
+}
+
+/* Sheet & dialog overlays fade in faster so they feel snappy */
+[data-slot="dialog-overlay"],
+[data-slot="sheet-overlay"] {
+  transition: opacity 150ms ease-out;
+}
+
+/* Form inputs — glow ring instead of abrupt outline */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  transition: box-shadow 150ms ease-out, border-color 150ms ease-out;
+}
+
+/* Badges & status pills — soften appearance transitions when status changes */
+[data-slot="badge"] {
+  transition: background-color 200ms ease-out, color 200ms ease-out;
+}
+
+/* Skeleton pulse is already handled by tw-animate-css.
+   Ensure skeleton blocks don't flicker on appearance. */
+[data-slot="skeleton"] {
+  will-change: opacity;
+}

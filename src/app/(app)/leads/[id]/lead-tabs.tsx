@@ -38,9 +38,10 @@ export function LeadTabsView({
       onValueChange={(v) => void setTab(v as TabValue, { scroll: false })}
       className="gap-6"
     >
+      <div className="overflow-x-auto border-b border-border/60">
       <TabsList
         variant="line"
-        className="w-full justify-start border-b border-border/60"
+        className="w-max min-w-full justify-start"
       >
         <TabsTrigger value="overview">
           <Info /> Overview
@@ -58,6 +59,7 @@ export function LeadTabsView({
           <Activity /> Activity
         </TabsTrigger>
       </TabsList>
+      </div>
 
       <TabsContent value="overview">{overviewSlot}</TabsContent>
       <TabsContent value="communications">{communicationsSlot}</TabsContent>

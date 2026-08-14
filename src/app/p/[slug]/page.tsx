@@ -53,5 +53,5 @@ export default async function PublicLandingPage({
   const blocks = parseBlocks(page.blocks);
   const theme = parseTheme(page.theme);
 
-  return <PageRenderer blocks={blocks} theme={theme} landingPageId={page.id} />;
+  return <PageRenderer blocks={blocks} theme={theme} landingPageId={page.id} animated />;
 }

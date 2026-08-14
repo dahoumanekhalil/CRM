@@ -24,6 +24,8 @@ export function FormBlock({ props, landingPageId }: Props) {
   const [phone, setPhone] = React.useState("");
   const [message, setMessage] = React.useState("");
   const [subscribed, setSubscribed] = React.useState(true);
+  // Honeypot — never touched by real users; bots auto-fill it.
+  const [hp, setHp] = React.useState("");
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,6 +52,7 @@ export function FormBlock({ props, landingPageId }: Props) {
           phone,
           message,
           subscribed,
+          hp,
           utmSource,
           utmMedium,
           utmCampaign,
@@ -119,6 +122,17 @@ export function FormBlock({ props, landingPageId }: Props) {
               className="space-y-4"
               noValidate
             >
+              {/* Honeypot — hidden from real users, filled by bots */}
+              <div aria-hidden="true" style={{ display: "none" }}>
+                <input
+                  type="text"
+                  name="hp"
+                  value={hp}
+                  onChange={(e) => setHp(e.target.value)}
+                  tabIndex={-1}
+                  autoComplete="off"
+                />
+              </div>
               <Field
                 label="Full name"
                 value={name}

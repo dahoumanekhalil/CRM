@@ -7,6 +7,11 @@ import { PricingBlock } from "./pricing";
 import { FAQBlock } from "./faq";
 import { CTABlock } from "./cta";
 import { FormBlock } from "./form";
+import { TestimonialsBlock } from "./testimonials";
+import { BenefitsBlock } from "./benefits";
+import { CurriculumBlock } from "./curriculum";
+import { SocialProofBlock } from "./social-proof";
+import { AnimatedSection } from "./animated-section";
 
 // Dispatch on discriminated union — TS narrows correctly per case.
 export function BlockRenderer({
@@ -31,6 +36,14 @@ export function BlockRenderer({
       return <CTABlock props={block.props} />;
     case "form":
       return <FormBlock props={block.props} landingPageId={landingPageId} />;
+    case "testimonials":
+      return <TestimonialsBlock props={block.props} />;
+    case "benefits":
+      return <BenefitsBlock props={block.props} />;
+    case "curriculum":
+      return <CurriculumBlock props={block.props} />;
+    case "social-proof":
+      return <SocialProofBlock props={block.props} />;
     default: {
       const _exhaustive: never = block;
       return null;
@@ -45,6 +58,9 @@ interface PageRendererProps {
   // Passed on the public /p/[slug] route so form blocks know where to POST.
   // Omitted (or null) in the CRM preview — the form renders but submit is disabled.
   landingPageId?: string | null;
+  // When true, each block is wrapped in a scroll-triggered entrance animation.
+  // Set only on the public /p/[slug] route — never in the CRM editor canvas.
+  animated?: boolean;
 }
 
 // Wraps blocks in a themed shell. Sets a CSS variable that block components
@@ -55,6 +71,7 @@ export function PageRenderer({
   theme,
   className,
   landingPageId,
+  animated = false,
 }: PageRendererProps) {
   const style: React.CSSProperties = {};
   if (theme?.primary) {
@@ -67,13 +84,22 @@ export function PageRenderer({
       style={style}
       dir="ltr"
     >
-      {blocks.map((block) => (
-        <BlockRenderer
-          key={block.id}
-          block={block}
-          landingPageId={landingPageId}
-        />
-      ))}
+      {blocks.map((block, index) =>
+        animated ? (
+          <AnimatedSection
+            key={block.id}
+            delay={Math.min(index * 0.05, 0.3)}
+          >
+            <BlockRenderer block={block} landingPageId={landingPageId} />
+          </AnimatedSection>
+        ) : (
+          <BlockRenderer
+            key={block.id}
+            block={block}
+            landingPageId={landingPageId}
+          />
+        )
+      )}
     </div>
   );
 }

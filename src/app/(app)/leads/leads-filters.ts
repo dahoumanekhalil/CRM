@@ -1,9 +1,10 @@
 import {
+  parseAsBoolean,
   parseAsInteger,
   parseAsString,
   parseAsStringLiteral,
 } from "nuqs";
-import { LEAD_STATUSES } from "@/lib/schemas/lead";
+import { LEAD_STATUSES, LEAD_FOLLOW_UP_FILTERS, LEAD_OWNERSHIP_FILTERS } from "@/lib/schemas/lead";
 
 const STATUS_FILTER = ["ALL", ...LEAD_STATUSES] as const;
 const SORT_KEYS = ["createdAt", "firstName", "status"] as const;
@@ -16,6 +17,15 @@ export const leadFilters = {
     .withDefault("ALL")
     .withOptions({ shallow: false, clearOnDefault: true }),
   courseId: parseAsString.withDefault("").withOptions({ shallow: false, clearOnDefault: true }),
+  followUp: parseAsStringLiteral(LEAD_FOLLOW_UP_FILTERS)
+    .withDefault("ALL")
+    .withOptions({ shallow: false, clearOnDefault: true }),
+  ownership: parseAsStringLiteral(LEAD_OWNERSHIP_FILTERS)
+    .withDefault("all")
+    .withOptions({ shallow: false, clearOnDefault: true }),
+  highPriority: parseAsBoolean
+    .withDefault(false)
+    .withOptions({ shallow: false, clearOnDefault: true }),
   page: parseAsInteger.withDefault(1).withOptions({ shallow: false, clearOnDefault: true }),
   pageSize: parseAsInteger.withDefault(25).withOptions({ shallow: false, clearOnDefault: true }),
   sortBy: parseAsStringLiteral(SORT_KEYS)

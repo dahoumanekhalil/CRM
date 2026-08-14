@@ -66,7 +66,7 @@ export async function createLead(
 
 export async function listLeads(input: ListLeadsInput) {
   const parsed = listLeadsSchema.parse(input);
-  await requireSession();
+  const session = await requireSession();
 
   const where: Prisma.LeadWhereInput = {};
 
@@ -76,6 +76,30 @@ export async function listLeads(input: ListLeadsInput) {
 
   if (parsed.courseId) {
     where.courseId = parsed.courseId;
+  }
+
+  if (parsed.ownership === "mine") {
+    where.ownerId = session.user.id;
+  } else if (parsed.ownership === "unassigned") {
+    where.ownerId = null;
+  }
+
+  if (parsed.highPriority) {
+    where.isHighPriority = true;
+  }
+
+  if (parsed.followUp !== "ALL") {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayEnd = new Date(todayStart.getTime() + 86_400_000 - 1);
+
+    if (parsed.followUp === "needs-followup") {
+      where.nextAction = { not: null };
+    } else if (parsed.followUp === "overdue") {
+      where.nextActionDue = { lt: todayStart };
+    } else if (parsed.followUp === "due-today") {
+      where.nextActionDue = { gte: todayStart, lte: todayEnd };
+    }
   }
 
   if (parsed.q) {
@@ -137,10 +161,88 @@ export async function getLeadDetail(id: string) {
     where: { id },
     include: {
       owner: { select: { id: true, name: true, email: true, image: true } },
+      nextActionOwner: { select: { id: true, name: true, email: true } },
       course: { select: { id: true, name: true, slug: true } },
       campaign: { select: { id: true, name: true } },
       student: { select: { id: true, firstName: true, lastName: true } },
     },
+  });
+}
+
+export async function updateLeadNextAction(
+  leadId: string,
+  data: { nextAction: string; nextActionDue: string | null; nextActionOwnerId: string | null }
+): Promise<Result<null>> {
+  await requireSession();
+
+  if (!data.nextAction.trim()) {
+    return { ok: false, error: "Next action text is required." };
+  }
+
+  try {
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        nextAction: data.nextAction.trim(),
+        nextActionDue: data.nextActionDue ? new Date(data.nextActionDue) : null,
+        nextActionOwnerId: data.nextActionOwnerId || null,
+      },
+    });
+    revalidatePath(`/leads/${leadId}`);
+    revalidatePath("/leads");
+    return { ok: true, data: null };
+  } catch (err) {
+    console.error("updateLeadNextAction failed", err);
+    return { ok: false, error: "We couldn't save the next action. Please try again." };
+  }
+}
+
+export async function clearLeadNextAction(leadId: string): Promise<Result<null>> {
+  await requireSession();
+
+  try {
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: { nextAction: null, nextActionDue: null, nextActionOwnerId: null },
+    });
+    revalidatePath(`/leads/${leadId}`);
+    revalidatePath("/leads");
+    return { ok: true, data: null };
+  } catch (err) {
+    console.error("clearLeadNextAction failed", err);
+    return { ok: false, error: "We couldn't clear the next action. Please try again." };
+  }
+}
+
+export async function toggleLeadPriority(leadId: string): Promise<Result<{ isHighPriority: boolean }>> {
+  await requireSession();
+  try {
+    const current = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { isHighPriority: true },
+    });
+    if (!current) return { ok: false, error: "Lead not found." };
+
+    const updated = await prisma.lead.update({
+      where: { id: leadId },
+      data: { isHighPriority: !current.isHighPriority },
+      select: { isHighPriority: true },
+    });
+
+    revalidatePath(`/leads/${leadId}`);
+    revalidatePath("/leads");
+    return { ok: true, data: { isHighPriority: updated.isHighPriority } };
+  } catch (err) {
+    console.error("toggleLeadPriority failed", err);
+    return { ok: false, error: "Couldn't update priority. Please try again." };
+  }
+}
+
+export async function listLeadsUsers() {
+  await requireSession();
+  return prisma.user.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, email: true },
   });
 }
 
@@ -388,5 +490,25 @@ export async function deleteLead(id: string): Promise<Result<null>> {
   } catch (err) {
     console.error("deleteLead failed", err);
     return { ok: false, error: "Couldn't delete the lead. Please try again." };
+  }
+}
+
+export async function updateLeadNotes(
+  leadId: string,
+  notes: string
+): Promise<Result<null>> {
+  await requireSession();
+  const trimmed = notes.trim();
+  try {
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: { notes: trimmed === "" || trimmed === "<p></p>" ? null : trimmed },
+      select: { id: true },
+    });
+    revalidatePath(`/leads/${leadId}`);
+    return { ok: true, data: null };
+  } catch (err) {
+    console.error("updateLeadNotes failed", err);
+    return { ok: false, error: "Couldn't save the notes. Please try again." };
   }
 }

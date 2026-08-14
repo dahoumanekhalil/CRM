@@ -2,15 +2,20 @@
 
 import * as React from "react";
 import type {
+  BenefitsProps,
   CTAProps,
+  CurriculumProps,
   FAQProps,
   FeaturesProps,
   FormProps,
   HeroProps,
   InstructorProps,
   PricingProps,
+  SocialProofProps,
+  TestimonialsProps,
 } from "@/lib/landing-blocks/types";
 import {
+  Field,
   InspectorSection,
   Repeater,
   SegmentedField,
@@ -479,6 +484,315 @@ export function FormForm({
           label="Success message"
           value={value.successMessage}
           onChange={(v) => patch({ successMessage: v })}
+        />
+      </InspectorSection>
+    </>
+  );
+}
+
+export function TestimonialsForm({
+  value,
+  onChange,
+}: {
+  value: TestimonialsProps;
+  onChange: (next: TestimonialsProps) => void;
+}) {
+  const patch = patcher(value, onChange);
+  const setItem = (i: number, next: Partial<TestimonialsProps["items"][number]>) => {
+    const items = value.items.map((it, idx) =>
+      idx === i ? { ...it, ...next } : it
+    );
+    patch({ items });
+  };
+
+  return (
+    <>
+      <InspectorSection title="Heading">
+        <TextField
+          label="Heading"
+          value={value.heading}
+          onChange={(v) => patch({ heading: v })}
+        />
+        <TextAreaField
+          label="Subheading"
+          value={value.subheading}
+          onChange={(v) => patch({ subheading: v })}
+        />
+      </InspectorSection>
+      <InspectorSection title="Reviews">
+        <Repeater
+          label="Testimonial items"
+          items={value.items}
+          min={1}
+          max={12}
+          addLabel="Add testimonial"
+          onAdd={() =>
+            patch({
+              items: [
+                ...value.items,
+                { quote: "Testimonial text here.", name: "Student Name" },
+              ],
+            })
+          }
+          onRemove={(i) =>
+            patch({ items: value.items.filter((_, idx) => idx !== i) })
+          }
+          renderItem={(item, i) => (
+            <>
+              <TextAreaField
+                label="Quote"
+                rows={3}
+                value={item.quote}
+                onChange={(v) => setItem(i, { quote: v })}
+              />
+              <TextField
+                label="Name"
+                value={item.name}
+                onChange={(v) => setItem(i, { name: v })}
+              />
+              <TextField
+                label="Role"
+                value={item.role}
+                onChange={(v) => setItem(i, { role: v })}
+              />
+              <Field label="Rating (1–5)">
+                <input
+                  type="number"
+                  min={1}
+                  max={5}
+                  value={item.rating ?? ""}
+                  onChange={(e) =>
+                    setItem(i, {
+                      rating: e.target.value === "" ? undefined : Number(e.target.value),
+                    })
+                  }
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+                />
+              </Field>
+            </>
+          )}
+        />
+      </InspectorSection>
+    </>
+  );
+}
+
+export function BenefitsForm({
+  value,
+  onChange,
+}: {
+  value: BenefitsProps;
+  onChange: (next: BenefitsProps) => void;
+}) {
+  const patch = patcher(value, onChange);
+
+  return (
+    <>
+      <InspectorSection title="Heading">
+        <TextField
+          label="Heading"
+          value={value.heading}
+          onChange={(v) => patch({ heading: v })}
+        />
+        <TextAreaField
+          label="Subheading"
+          value={value.subheading}
+          onChange={(v) => patch({ subheading: v })}
+        />
+      </InspectorSection>
+      <InspectorSection title="Layout">
+        <SegmentedField
+          label="Columns"
+          value={String(value.columns ?? 2) as "1" | "2"}
+          onChange={(v) => patch({ columns: Number(v) as 1 | 2 })}
+          options={[
+            { value: "1", label: "1 column" },
+            { value: "2", label: "2 columns" },
+          ]}
+        />
+      </InspectorSection>
+      <InspectorSection title="Items">
+        <Repeater
+          label="Benefit items"
+          items={value.items}
+          min={1}
+          max={20}
+          addLabel="Add benefit"
+          onAdd={() => patch({ items: [...value.items, "New benefit"] })}
+          onRemove={(i) =>
+            patch({ items: value.items.filter((_, idx) => idx !== i) })
+          }
+          renderItem={(item, i) => (
+            <TextField
+              label={`Item ${i + 1}`}
+              value={item}
+              onChange={(v) => {
+                const next = value.items.map((t, idx) => (idx === i ? v : t));
+                patch({ items: next });
+              }}
+            />
+          )}
+        />
+      </InspectorSection>
+    </>
+  );
+}
+
+export function CurriculumForm({
+  value,
+  onChange,
+}: {
+  value: CurriculumProps;
+  onChange: (next: CurriculumProps) => void;
+}) {
+  const patch = patcher(value, onChange);
+  const setModule = (i: number, next: Partial<CurriculumProps["modules"][number]>) => {
+    const modules = value.modules.map((m, idx) =>
+      idx === i ? { ...m, ...next } : m
+    );
+    patch({ modules });
+  };
+
+  return (
+    <>
+      <InspectorSection title="Heading">
+        <TextField
+          label="Heading"
+          value={value.heading}
+          onChange={(v) => patch({ heading: v })}
+        />
+        <TextAreaField
+          label="Subheading"
+          value={value.subheading}
+          onChange={(v) => patch({ subheading: v })}
+        />
+      </InspectorSection>
+      <InspectorSection title="Modules">
+        <Repeater
+          label="Modules"
+          items={value.modules}
+          min={1}
+          max={20}
+          addLabel="Add module"
+          onAdd={() =>
+            patch({
+              modules: [
+                ...value.modules,
+                { title: "New module", lessons: ["Lesson 1"] },
+              ],
+            })
+          }
+          onRemove={(i) =>
+            patch({ modules: value.modules.filter((_, idx) => idx !== i) })
+          }
+          renderItem={(mod, i) => (
+            <>
+              <TextField
+                label="Module title"
+                value={mod.title}
+                onChange={(v) => setModule(i, { title: v })}
+              />
+              <TextField
+                label="Duration"
+                value={mod.duration}
+                onChange={(v) => setModule(i, { duration: v })}
+                placeholder="e.g. 2 hours"
+              />
+              <Repeater
+                label="Lessons"
+                items={mod.lessons}
+                max={20}
+                addLabel="Add lesson"
+                onAdd={() =>
+                  setModule(i, { lessons: [...mod.lessons, "New lesson"] })
+                }
+                onRemove={(j) =>
+                  setModule(i, {
+                    lessons: mod.lessons.filter((_, idx) => idx !== j),
+                  })
+                }
+                renderItem={(lesson, j) => (
+                  <TextField
+                    label={`Lesson ${j + 1}`}
+                    value={lesson}
+                    onChange={(v) => {
+                      const next = mod.lessons.map((l, idx) =>
+                        idx === j ? v : l
+                      );
+                      setModule(i, { lessons: next });
+                    }}
+                  />
+                )}
+              />
+            </>
+          )}
+        />
+      </InspectorSection>
+    </>
+  );
+}
+
+export function SocialProofForm({
+  value,
+  onChange,
+}: {
+  value: SocialProofProps;
+  onChange: (next: SocialProofProps) => void;
+}) {
+  const patch = patcher(value, onChange);
+  const setStat = (i: number, next: Partial<SocialProofProps["stats"][number]>) => {
+    const stats = value.stats.map((s, idx) =>
+      idx === i ? { ...s, ...next } : s
+    );
+    patch({ stats });
+  };
+
+  return (
+    <>
+      <InspectorSection title="Heading">
+        <TextField
+          label="Heading"
+          value={value.heading}
+          onChange={(v) => patch({ heading: v })}
+        />
+      </InspectorSection>
+      <InspectorSection title="Stats">
+        <Repeater
+          label="Stats"
+          items={value.stats}
+          min={1}
+          max={8}
+          addLabel="Add stat"
+          onAdd={() =>
+            patch({ stats: [...value.stats, { value: "0", label: "Label" }] })
+          }
+          onRemove={(i) =>
+            patch({ stats: value.stats.filter((_, idx) => idx !== i) })
+          }
+          renderItem={(stat, i) => (
+            <>
+              <TextField
+                label="Value"
+                value={stat.value}
+                onChange={(v) => setStat(i, { value: v })}
+                placeholder="e.g. 2,400+"
+              />
+              <TextField
+                label="Label"
+                value={stat.label}
+                onChange={(v) => setStat(i, { label: v })}
+                placeholder="e.g. students trained"
+              />
+            </>
+          )}
+        />
+      </InspectorSection>
+      <InspectorSection title="Footer">
+        <TextField
+          label="Note"
+          hint="Small text shown below the stats."
+          value={value.note}
+          onChange={(v) => patch({ note: v })}
         />
       </InspectorSection>
     </>

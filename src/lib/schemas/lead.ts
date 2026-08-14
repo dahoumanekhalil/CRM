@@ -40,12 +40,27 @@ export const updateLeadSchema = createLeadSchema.extend({
 });
 export type UpdateLeadInput = z.infer<typeof updateLeadSchema>;
 
+export const LEAD_FOLLOW_UP_FILTERS = [
+  "ALL",
+  "needs-followup",
+  "overdue",
+  "due-today",
+] as const;
+
+export type LeadFollowUpFilter = (typeof LEAD_FOLLOW_UP_FILTERS)[number];
+
+export const LEAD_OWNERSHIP_FILTERS = ["all", "mine", "unassigned"] as const;
+export type LeadOwnershipFilter = (typeof LEAD_OWNERSHIP_FILTERS)[number];
+
 export const listLeadsSchema = z.object({
   q: z.string().trim().max(120).optional(),
   status: z
     .union([z.enum(LEAD_STATUSES), z.literal("ALL")])
     .default("ALL"),
   courseId: z.string().min(1).optional(),
+  followUp: z.enum(LEAD_FOLLOW_UP_FILTERS).default("ALL"),
+  ownership: z.enum(LEAD_OWNERSHIP_FILTERS).default("all"),
+  highPriority: z.preprocess((v) => v === "true" || v === true, z.boolean()).default(false),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(5).max(200).default(25),
   sortBy: z

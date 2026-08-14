@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/primitives/status-badge";
 import type { LeadDetail } from "../actions";
 import { LeadHeaderActions } from "./lead-header-actions";
+import { PriorityToggle } from "./priority-toggle";
 import type { SessionForConvert } from "@/components/shared/convert-lead-dialog";
 
 function initials(first: string, last: string | null): string {
@@ -48,6 +49,7 @@ export function LeadHeader({
               <h1 className="truncate text-2xl font-semibold tracking-tight md:text-3xl">
                 {fullName}
               </h1>
+              <PriorityToggle leadId={lead.id} isHighPriority={lead.isHighPriority} />
               <StatusBadge status={lead.status} />
               {!lead.subscribed ? (
                 <span

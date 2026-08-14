@@ -2,11 +2,14 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { MoreHorizontal, Mail, Phone, Contact } from "lucide-react";
+import { MoreHorizontal, Mail, Phone, Contact, Clock, Star } from "lucide-react";
+import { isPast, isToday, parseISO } from "date-fns";
+import { useRouter } from "next/navigation";
 import { useQueryStates } from "nuqs";
 import { formatDistanceToNow } from "date-fns";
 import type { ColumnDef } from "@tanstack/react-table";
 
+import { cn } from "@/lib/utils";
 import { DataTable } from "@/components/tables/data-table";
 import { DataTableColumnHeader } from "@/components/tables/data-table-column-header";
 import { DataTablePagination } from "@/components/tables/data-table-pagination";
@@ -53,6 +56,7 @@ export function LeadsTable({
   rowSelection: Record<string, boolean>;
   onRowSelectionChange: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
 }) {
+  const router = useRouter();
   const [filters, setFilters] = useQueryStates(leadFilters);
 
   const toggleSort = (key: "createdAt" | "firstName" | "status") => {
@@ -109,18 +113,38 @@ export function LeadsTable({
         ),
         cell: ({ row }) => {
           const name = fullName(row.original) || "—";
+          const due = row.original.nextActionDue
+            ? parseISO(row.original.nextActionDue.toString())
+            : null;
+          const isOverdue = due && isPast(due) && !isToday(due);
+          const isDueToday = due && isToday(due);
           return (
             <div className="flex items-center gap-3 min-w-0">
-              <Avatar className="size-8">
-                <AvatarFallback className="text-[11px] font-semibold bg-primary/10 text-primary">
-                  {initials(name || "?")}
-                </AvatarFallback>
-              </Avatar>
+              <div className="relative shrink-0">
+                <Avatar className="size-8">
+                  <AvatarFallback className="text-[11px] font-semibold bg-primary/10 text-primary">
+                    {initials(name || "?")}
+                  </AvatarFallback>
+                </Avatar>
+                {row.original.isHighPriority ? (
+                  <Star className="absolute -top-1 -end-1 size-3 fill-amber-400 text-amber-400" />
+                ) : null}
+              </div>
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium">{name}</div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {row.original.source ?? "No source"}
-                </div>
+                {row.original.nextAction ? (
+                  <div className={cn(
+                    "flex items-center gap-1 truncate text-xs",
+                    isOverdue ? "text-destructive" : isDueToday ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+                  )}>
+                    <Clock className="size-3 shrink-0" />
+                    <span className="truncate">{row.original.nextAction}</span>
+                  </div>
+                ) : (
+                  <div className="truncate text-xs text-muted-foreground">
+                    {row.original.source ?? "No source"}
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -213,6 +237,18 @@ export function LeadsTable({
           ),
       },
       {
+        id: "lastContacted",
+        header: "Last contact",
+        cell: ({ row }) =>
+          row.original.lastContactedAt ? (
+            <span className="text-sm text-muted-foreground whitespace-nowrap tabular-nums">
+              {formatDistanceToNow(row.original.lastContactedAt, { addSuffix: true })}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground/50">Never</span>
+          ),
+      },
+      {
         accessorKey: "createdAt",
         header: () => (
           <DataTableColumnHeader
@@ -302,6 +338,7 @@ export function LeadsTable({
         rowSelection={rowSelection}
         onRowSelectionChange={onRowSelectionChange}
         getRowId={(r) => r.id}
+        onRowClick={(row) => router.push(`/leads/${row.id}`)}
       />
       <DataTablePagination
         page={filters.page}

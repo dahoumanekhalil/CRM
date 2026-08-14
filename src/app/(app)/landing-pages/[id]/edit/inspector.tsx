@@ -7,13 +7,17 @@ import { BLOCK_REGISTRY } from "@/lib/landing-blocks/registry";
 import { cn } from "@/lib/utils";
 import { useEditor } from "./editor-store";
 import {
+  BenefitsForm,
   CTAForm,
+  CurriculumForm,
   FAQForm,
   FeaturesForm,
   FormForm,
   HeroForm,
   InstructorForm,
   PricingForm,
+  SocialProofForm,
+  TestimonialsForm,
 } from "./inspector-forms";
 
 export function Inspector() {
@@ -159,6 +163,14 @@ function BlockForm({
       return <CTAForm value={block.props} onChange={onChange} />;
     case "form":
       return <FormForm value={block.props} onChange={onChange} />;
+    case "testimonials":
+      return <TestimonialsForm value={block.props} onChange={onChange} />;
+    case "benefits":
+      return <BenefitsForm value={block.props} onChange={onChange} />;
+    case "curriculum":
+      return <CurriculumForm value={block.props} onChange={onChange} />;
+    case "social-proof":
+      return <SocialProofForm value={block.props} onChange={onChange} />;
     default: {
       const _exhaustive: never = block;
       return null;

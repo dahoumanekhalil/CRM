@@ -6,6 +6,10 @@ import {
   HelpCircle,
   MousePointerClick,
   MailPlus,
+  Quote,
+  CheckSquare,
+  BookMarked,
+  BarChart2,
   type LucideIcon,
 } from "lucide-react";
 import type { BlockType, LandingBlock } from "./types";
@@ -152,6 +156,82 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockMeta> = {
           "Our team will get back to you within one business day.",
         privacyNote:
           "We'll only use your details to contact you about this course.",
+      },
+    }),
+  },
+  testimonials: {
+    type: "testimonials",
+    label: "Testimonials",
+    description: "Student reviews and quotes.",
+    icon: Quote,
+    createDefault: (id) => ({
+      id,
+      type: "testimonials",
+      props: {
+        heading: "What our students say",
+        items: [
+          { quote: "This course completely changed how I approach my work.", name: "Ahmed Al-Rashid", role: "Team Lead", rating: 5 },
+          { quote: "Practical, well-structured and immediately applicable.", name: "Sara Mansour", role: "Marketing Manager", rating: 5 },
+          { quote: "Worth every dirham. Highly recommended.", name: "Khalid Ibrahim", role: "Business Owner", rating: 5 },
+        ],
+      },
+    }),
+  },
+  benefits: {
+    type: "benefits",
+    label: "Benefits",
+    description: "What you will learn — a clean checklist.",
+    icon: CheckSquare,
+    createDefault: (id) => ({
+      id,
+      type: "benefits",
+      props: {
+        heading: "What you'll walk away with",
+        items: [
+          "A proven framework you can apply immediately",
+          "Confidence to lead your team through change",
+          "Practical tools and templates from the program",
+          "Certificate of completion + alumni network access",
+        ],
+        columns: 2,
+      },
+    }),
+  },
+  curriculum: {
+    type: "curriculum",
+    label: "Curriculum",
+    description: "Course modules and lessons outline.",
+    icon: BookMarked,
+    createDefault: (id) => ({
+      id,
+      type: "curriculum",
+      props: {
+        heading: "Course curriculum",
+        modules: [
+          { title: "Module 1 — Foundations", duration: "3 hours", lessons: ["Introduction and objectives", "Core concepts", "Case study walkthrough"] },
+          { title: "Module 2 — Application", duration: "4 hours", lessons: ["Hands-on exercises", "Group workshop", "Real-world scenarios"] },
+          { title: "Module 3 — Mastery", duration: "3 hours", lessons: ["Advanced techniques", "Action planning", "Final assessment"] },
+        ],
+      },
+    }),
+  },
+  "social-proof": {
+    type: "social-proof",
+    label: "Social Proof",
+    description: "Key numbers that build trust.",
+    icon: BarChart2,
+    createDefault: (id) => ({
+      id,
+      type: "social-proof",
+      props: {
+        heading: "Trusted by professionals across the region",
+        stats: [
+          { value: "2,400+", label: "professionals trained" },
+          { value: "98%", label: "satisfaction rate" },
+          { value: "120+", label: "companies" },
+          { value: "6", label: "countries" },
+        ],
+        note: "Based on post-training surveys from 2023–2025.",
       },
     }),
   },

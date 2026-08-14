@@ -5,44 +5,46 @@ import { leadFormSubmissionSchema } from "@/lib/schemas/lead-form";
 // Public, unauthenticated endpoint. Landing pages POST here.
 // Response is always JSON; never leak stack traces.
 
-// ── Simple in-memory rate limiter ──────────────────────────────────────────
-// Max 5 submissions per IP per 10 minutes. Resets per-IP after the window.
-// In a multi-instance production environment, swap this for a Redis counter.
-// For a single-server internal CRM, this is more than sufficient.
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+// Two independent buckets: per-IP and per-email.
+// IP limit catches bulk bots; email limit catches bots that rotate IPs.
+// In a multi-instance production environment, swap for a Redis counter.
 
 interface Bucket {
   count: number;
   resetAt: number; // epoch ms
 }
 
-const WINDOW_MS = 10 * 60 * 1000; // 10 minutes
-const MAX_PER_WINDOW = 5;
-const buckets = new Map<string, Bucket>();
+const IP_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+const IP_MAX = 5;
+const EMAIL_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const EMAIL_MAX = 3; // 3 submissions from the same email per hour
 
-// Evict stale buckets so the Map doesn't grow indefinitely.
-function pruneExpired() {
+const ipBuckets = new Map<string, Bucket>();
+const emailBuckets = new Map<string, Bucket>();
+
+function checkBucket(
+  map: Map<string, Bucket>,
+  key: string,
+  max: number,
+  windowMs: number
+): { allowed: boolean; retryAfterSec: number } {
   const now = Date.now();
-  for (const [ip, bucket] of buckets) {
-    if (now > bucket.resetAt) buckets.delete(ip);
+
+  // Probabilistic prune to prevent unbounded Map growth (~1% of calls).
+  if (Math.random() < 0.01) {
+    for (const [k, b] of map) {
+      if (now > b.resetAt) map.delete(k);
+    }
   }
-}
 
-function checkRateLimit(ip: string): {
-  allowed: boolean;
-  retryAfterSec: number;
-} {
-  const now = Date.now();
-  // Prune occasionally (every ~100 calls statistically).
-  if (Math.random() < 0.01) pruneExpired();
-
-  const bucket = buckets.get(ip);
+  const bucket = map.get(key);
   if (!bucket || now > bucket.resetAt) {
-    buckets.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    map.set(key, { count: 1, resetAt: now + windowMs });
     return { allowed: true, retryAfterSec: 0 };
   }
-  if (bucket.count >= MAX_PER_WINDOW) {
-    const retryAfterSec = Math.ceil((bucket.resetAt - now) / 1000);
-    return { allowed: false, retryAfterSec };
+  if (bucket.count >= max) {
+    return { allowed: false, retryAfterSec: Math.ceil((bucket.resetAt - now) / 1000) };
   }
   bucket.count += 1;
   return { allowed: true, retryAfterSec: 0 };
@@ -50,35 +52,47 @@ function checkRateLimit(ip: string): {
 
 function getClientIp(request: Request): string {
   // Respect X-Forwarded-For when behind a reverse proxy / CDN.
+  // Takes the first (original-client) IP from a potentially comma-separated list.
   const forwarded =
     (request.headers as Headers).get("x-forwarded-for") ??
     (request.headers as Headers).get("x-real-ip");
-  if (forwarded) {
-    // Take the first (original) IP from a potentially comma-separated list.
-    return forwarded.split(",")[0].trim();
-  }
-  // Fallback — no IP discernible (should rarely happen in practice).
+  if (forwarded) return forwarded.split(",")[0].trim();
   return "unknown";
 }
 
+// ── Body size guard ───────────────────────────────────────────────────────────
+// Reject payloads larger than 16 KB before parsing JSON. Prevents DoS via
+// enormous bodies that tie up the JSON parser.
+const MAX_BODY_BYTES = 16 * 1024;
+
+// ── Handler ───────────────────────────────────────────────────────────────────
 export async function POST(request: Request) {
-  // ── Rate limit ────────────────────────────────────────────────────────
-  const ip = getClientIp(request);
-  const { allowed, retryAfterSec } = checkRateLimit(ip);
-  if (!allowed) {
+  // 1. Body size guard
+  const contentLength = Number(
+    (request.headers as Headers).get("content-length") ?? "0"
+  );
+  if (contentLength > MAX_BODY_BYTES) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: `Too many submissions. Please wait ${Math.ceil(retryAfterSec / 60)} minute${retryAfterSec > 119 ? "s" : ""} before trying again.`,
-      },
-      {
-        status: 429,
-        headers: { "Retry-After": String(retryAfterSec) },
-      }
+      { ok: false, error: "Malformed request." },
+      { status: 413 }
     );
   }
 
-  // ── Parse & validate ──────────────────────────────────────────────────
+  // 2. Per-IP rate limit
+  const ip = getClientIp(request);
+  const ipCheck = checkBucket(ipBuckets, ip, IP_MAX, IP_WINDOW_MS);
+  if (!ipCheck.allowed) {
+    const mins = Math.ceil(ipCheck.retryAfterSec / 60);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Too many submissions. Please wait ${mins} minute${mins > 1 ? "s" : ""} before trying again.`,
+      },
+      { status: 429, headers: { "Retry-After": String(ipCheck.retryAfterSec) } }
+    );
+  }
+
+  // 3. Parse & validate
   let body: unknown;
   try {
     body = await request.json();
@@ -102,13 +116,29 @@ export async function POST(request: Request) {
 
   const d = parsed.data;
 
+  // 4. Honeypot check — silently return success so the bot gets no signal.
+  //    Real users never see or touch this field (it is hidden in the form).
+  if (d.hp && d.hp.trim().length > 0) {
+    return NextResponse.json({ ok: true });
+  }
+
+  // 5. Per-email rate limit (secondary, catches IP-rotating bots)
+  const emailKey = d.email.toLowerCase();
+  const emailCheck = checkBucket(emailBuckets, emailKey, EMAIL_MAX, EMAIL_WINDOW_MS);
+  if (!emailCheck.allowed) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "This email address has been submitted too many times recently. Please try again later.",
+      },
+      { status: 429, headers: { "Retry-After": String(emailCheck.retryAfterSec) } }
+    );
+  }
+
+  // 6. Resolve landing page
   const page = await prisma.landingPage.findUnique({
     where: { id: d.landingPageId },
-    select: {
-      id: true,
-      title: true,
-      courseId: true,
-    },
+    select: { id: true, title: true, courseId: true },
   });
   if (!page) {
     return NextResponse.json(
@@ -117,11 +147,11 @@ export async function POST(request: Request) {
     );
   }
 
+  // 7. Persist lead
   const trimmed = d.name.trim();
   const spaceIdx = trimmed.indexOf(" ");
   const firstName = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
   const lastName = spaceIdx === -1 ? null : trimmed.slice(spaceIdx + 1).trim();
-
   const emptyToNull = (v: string) => (v.trim() === "" ? null : v);
 
   try {
