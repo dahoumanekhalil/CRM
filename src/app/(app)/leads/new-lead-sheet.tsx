@@ -58,6 +58,7 @@ const defaultValues: FormInput = {
   lastName: "",
   email: "",
   phone: "",
+  preferredCallTime: "",
   status: "NEW",
   source: "",
   notes: "",
@@ -160,24 +161,43 @@ export function NewLeadSheet({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="phone"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Phone</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="tel"
-                      placeholder="+1 555 555 0100"
-                      {...field}
-                      value={field.value ?? ""}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="tel"
+                        placeholder="+1 555 555 0100"
+                        {...field}
+                        value={field.value ?? ""}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="preferredCallTime"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Best time to call</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g. After 3 PM, Mornings"
+                        {...field}
+                        value={field.value ?? ""}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <FormField

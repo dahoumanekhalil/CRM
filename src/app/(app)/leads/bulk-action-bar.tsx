@@ -26,7 +26,6 @@ const humanize = (s: string) =>
     .join(" ");
 
 // Statuses shown as quick-action chips in the bulk bar.
-// REGISTERED and LOST are intentional terminal states (kept but less prominent).
 const QUICK_STATUSES: Array<{
   status: LeadStatus;
   label: string;
@@ -35,26 +34,32 @@ const QUICK_STATUSES: Array<{
   {
     status: "CONTACTED",
     label: "Mark contacted",
-    className:
-      "bg-primary/10 text-primary hover:bg-primary/20 border-primary/20",
+    className: "bg-primary/10 text-primary hover:bg-primary/20 border-primary/20",
   },
   {
     status: "INTERESTED",
     label: "Mark interested",
-    className:
-      "bg-success/10 text-success hover:bg-success/20 border-success/20",
+    className: "bg-success/10 text-success hover:bg-success/20 border-success/20",
   },
   {
     status: "FOLLOW_UP",
     label: "Follow up",
-    className:
-      "bg-warning/10 text-warning hover:bg-warning/20 border-warning/20",
+    className: "bg-warning/10 text-warning hover:bg-warning/20 border-warning/20",
+  },
+  {
+    status: "CONFIRMED",
+    label: "Mark confirmed",
+    className: "bg-success/10 text-success hover:bg-success/20 border-success/20",
+  },
+  {
+    status: "NOT_INTERESTED",
+    label: "Not interested",
+    className: "bg-muted text-muted-foreground hover:bg-muted/80 border-border",
   },
   {
     status: "LOST",
     label: "Mark lost",
-    className:
-      "bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20",
+    className: "bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20",
   },
 ];
 

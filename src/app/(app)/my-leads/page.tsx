@@ -1,35 +1,38 @@
-import { PageHeader } from "@/components/primitives/page-header";
-import { listCoursesForLeadFilter, listLeads, listSalesTeam } from "./actions";
-import { listLeadsSchema } from "@/lib/schemas/lead";
-import { LeadsClient } from "./leads-client";
+import type { Metadata } from "next";
 import { auth } from "@/auth";
 import { hasPermission } from "@/lib/permissions";
+import { listLeads, listCoursesForLeadFilter, listSalesTeam } from "../leads/actions";
+import { listLeadsSchema } from "@/lib/schemas/lead";
+import { LeadsClient } from "../leads/leads-client";
+import { PageHeader } from "@/components/primitives/page-header";
 
-export const metadata = { title: "Leads" };
+export const metadata: Metadata = { title: "My Leads" };
 
-export default async function LeadsPage({
+export default async function MyLeadsPage({
   searchParams,
-}: PageProps<"/leads">) {
+}: PageProps<"/my-leads">) {
   const params = await searchParams;
   const parsed = listLeadsSchema.parse({
     q: typeof params.q === "string" ? params.q : undefined,
     status: typeof params.status === "string" ? params.status : undefined,
     courseId: typeof params.courseId === "string" ? params.courseId : undefined,
     followUp: typeof params.followUp === "string" ? params.followUp : undefined,
-    ownership: typeof params.ownership === "string" ? params.ownership : undefined,
-    highPriority: typeof params.highPriority === "string" ? params.highPriority : undefined,
+    // SALES role: always mine — ignore ownership param
+    ownership: "mine",
+    highPriority:
+      typeof params.highPriority === "string" ? params.highPriority : undefined,
     page: typeof params.page === "string" ? params.page : undefined,
-    pageSize: typeof params.pageSize === "string" ? params.pageSize : undefined,
+    pageSize:
+      typeof params.pageSize === "string" ? params.pageSize : undefined,
     sortBy: typeof params.sortBy === "string" ? params.sortBy : undefined,
     sortDir: typeof params.sortDir === "string" ? params.sortDir : undefined,
   });
 
   const session = await auth();
-  const isSales = session?.user?.role === "SALES";
   const canAssign = hasPermission(session?.user?.role, "leads.assign");
 
   const [{ rows, total }, courses, salesTeam] = await Promise.all([
-    listLeads(parsed, isSales ? { contactedOnly: true } : undefined),
+    listLeads(parsed),
     listCoursesForLeadFilter(),
     canAssign ? listSalesTeam() : Promise.resolve([]),
   ]);
@@ -37,13 +40,9 @@ export default async function LeadsPage({
   return (
     <>
       <PageHeader
-        eyebrow="Sales"
-        title={isSales ? "Contacted Leads" : "Leads"}
-        description={
-          isSales
-            ? "Leads you've already been in contact with."
-            : "Manage everyone who's shown interest in your courses."
-        }
+        eyebrow="My workspace"
+        title="My Leads"
+        description={`${total} lead${total !== 1 ? "s" : ""} assigned to you`}
       />
       <div className="flex-1 space-y-4 p-6">
         <LeadsClient
@@ -52,7 +51,7 @@ export default async function LeadsPage({
           courses={courses}
           salesTeam={salesTeam}
           canAssign={canAssign}
-          hideOwnershipFilter={isSales}
+          hideOwnershipFilter
         />
       </div>
     </>

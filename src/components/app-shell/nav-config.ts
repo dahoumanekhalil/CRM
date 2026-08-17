@@ -15,6 +15,8 @@ import {
   BarChart3,
   Settings,
   Bot,
+  TrendingUp,
+  Target,
   type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/lib/permissions";
@@ -61,6 +63,22 @@ export const navGroups: NavGroup[] = [
   {
     label: "Sales",
     items: [
+      {
+        label: "Sales Ops",
+        href: "/sales",
+        icon: TrendingUp,
+        matchPrefix: true,
+        permission: "sales.view",
+        built: true,
+      },
+      {
+        label: "My Leads",
+        href: "/my-leads",
+        icon: Target,
+        matchPrefix: true,
+        permission: "leads.view",
+        built: true,
+      },
       {
         label: "Leads",
         href: "/leads",

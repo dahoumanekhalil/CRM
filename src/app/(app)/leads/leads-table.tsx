@@ -2,11 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { MoreHorizontal, Mail, Phone, Contact, Clock, Star, Eye } from "lucide-react";
+import { MoreHorizontal, Mail, Phone, Contact, Clock, Star, Eye, PhoneCall, AlarmClock, MessageCircle, Plus } from "lucide-react";
 import { isPast, isToday, parseISO } from "date-fns";
 import { useRouter } from "next/navigation";
 import { useQueryStates } from "nuqs";
-import { formatDistanceToNow } from "date-fns";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { cn } from "@/lib/utils";
@@ -25,10 +24,69 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { CommunicationSheet } from "@/components/shared/communication-sheet";
 import { leadFilters } from "./leads-filters";
 import type { LeadRow } from "./actions";
+
+function NoteCell({ leadId, body }: { leadId: string; body: string | null | undefined }) {
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  const preview = body && body.length > 30 ? body.slice(0, 30) + "…" : body;
+
+  return (
+    <div
+      className="group flex items-center gap-1.5"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {body ? (
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground cursor-default max-w-[150px]">
+                <MessageCircle className="size-3 shrink-0" />
+                <span className="truncate">{preview}</span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent
+              side="top"
+              className="max-w-[280px] whitespace-pre-wrap text-xs leading-relaxed"
+            >
+              {body}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : (
+        <span className="text-xs text-muted-foreground/40 italic">—</span>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="opacity-0 group-hover:opacity-100 transition-opacity ml-auto shrink-0 flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted"
+      >
+        <Plus className="size-3" />
+        Note
+      </button>
+
+      <CommunicationSheet
+        open={open}
+        onOpenChange={(v) => {
+          setOpen(v);
+          if (!v) router.refresh();
+        }}
+        leadId={leadId}
+        defaultType="NOTE"
+      />
+    </div>
+  );
+}
 
 function fullName(row: LeadRow) {
   return [row.firstName, row.lastName].filter(Boolean).join(" ");
@@ -156,22 +214,26 @@ export function LeadsTable({
         id: "contact",
         header: "Contact",
         cell: ({ row }) => (
-          <div className="flex flex-col gap-0.5 text-sm">
+          <div className="flex flex-col gap-1 text-sm">
+            {row.original.phone ? (
+              <a
+                href={`tel:${row.original.phone}`}
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/20 transition-colors w-fit"
+              >
+                <PhoneCall className="size-3.5" />
+                {row.original.phone}
+              </a>
+            ) : null}
             {row.original.email ? (
               <a
                 href={`mailto:${row.original.email}`}
                 onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1.5 text-foreground hover:underline"
+                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
-                <Mail className="size-3.5 text-muted-foreground" />
-                <span className="truncate">{row.original.email}</span>
+                <Mail className="size-3" />
+                <span className="truncate max-w-[140px]">{row.original.email}</span>
               </a>
-            ) : null}
-            {row.original.phone ? (
-              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Phone className="size-3.5" />
-                {row.original.phone}
-              </span>
             ) : null}
             {!row.original.email && !row.original.phone ? (
               <span className="text-xs text-muted-foreground">—</span>
@@ -203,67 +265,34 @@ export function LeadsTable({
         ),
       },
       {
-        id: "course",
-        header: "Interested in",
-        cell: ({ row }) =>
-          row.original.course ? (
-            <Link
-              href={`/courses/${row.original.course.slug}`}
-              onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-            >
-              {row.original.course.name}
-            </Link>
-          ) : (
-            <span className="text-xs text-muted-foreground/60">—</span>
-          ),
-      },
-      {
-        id: "owner",
-        header: "Owner",
-        cell: ({ row }) =>
-          row.original.owner ? (
-            <div className="flex items-center gap-2">
-              <Avatar className="size-6">
-                <AvatarImage src={row.original.owner.image ?? undefined} />
-                <AvatarFallback className="text-[10px] bg-muted">
-                  {initials(row.original.owner.name ?? row.original.owner.email ?? "?")}
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-sm text-muted-foreground truncate">
-                {row.original.owner.name ?? row.original.owner.email}
-              </span>
-            </div>
-          ) : (
-            <span className="text-xs text-muted-foreground">Unassigned</span>
-          ),
-      },
-      {
-        id: "lastContacted",
-        header: "Last contact",
-        cell: ({ row }) =>
-          row.original.lastContactedAt ? (
-            <span className="text-sm text-muted-foreground whitespace-nowrap tabular-nums">
-              {formatDistanceToNow(row.original.lastContactedAt, { addSuffix: true })}
-            </span>
-          ) : (
-            <span className="text-xs text-muted-foreground/50">Never</span>
-          ),
-      },
-      {
-        accessorKey: "createdAt",
-        header: () => (
-          <DataTableColumnHeader
-            title="Added"
-            sortDir={sortDirFor("createdAt")}
-            onToggleSort={() => toggleSort("createdAt")}
+        id: "lastNote",
+        header: "Last note",
+        cell: ({ row }) => (
+          <NoteCell
+            leadId={row.original.id}
+            body={row.original.communications?.[0]?.body}
           />
         ),
-        cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground whitespace-nowrap tabular-nums">
-            {formatDistanceToNow(row.original.createdAt, { addSuffix: true })}
+      },
+      {
+        id: "callTime",
+        header: () => (
+          <span className="flex items-center gap-1.5 whitespace-nowrap">
+            <AlarmClock className="size-3.5" />
+            Best time to call
           </span>
         ),
+        cell: ({ row }) => {
+          const t = (row.original as Record<string, unknown>).preferredCallTime as string | null;
+          return t ? (
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400 whitespace-nowrap">
+              <AlarmClock className="size-3" />
+              {t}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground/40">—</span>
+          );
+        },
       },
       {
         id: "actions",

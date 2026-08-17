@@ -5,8 +5,11 @@ export const LEAD_STATUSES = [
   "CONTACTED",
   "INTERESTED",
   "FOLLOW_UP",
+  "CONFIRMED",
   "REGISTERED",
   "LOST",
+  "NOT_INTERESTED",
+  "UNREACHABLE",
 ] as const;
 
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
@@ -26,6 +29,7 @@ export const createLeadSchema = z.object({
       { message: "Enter a valid email" }
     ),
   phone: z.string().trim().max(40).default(""),
+  preferredCallTime: z.string().trim().max(100).default(""),
   status: z.enum(LEAD_STATUSES).default("NEW"),
   source: z.string().trim().max(80).default(""),
   notes: z.string().max(2000).default(""),

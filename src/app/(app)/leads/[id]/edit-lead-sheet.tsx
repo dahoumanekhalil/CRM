@@ -60,6 +60,7 @@ function toDefaults(lead: LeadDetail): FormInput {
     lastName: lead.lastName ?? "",
     email: lead.email ?? "",
     phone: lead.phone ?? "",
+    preferredCallTime: (lead as Record<string, unknown>).preferredCallTime as string ?? "",
     status: lead.status,
     source: lead.source ?? "",
     notes: lead.notes ?? "",
@@ -166,19 +167,38 @@ export function EditLeadSheet({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="phone"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Phone</FormLabel>
-                  <FormControl>
-                    <Input type="tel" {...field} value={field.value ?? ""} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone</FormLabel>
+                    <FormControl>
+                      <Input type="tel" {...field} value={field.value ?? ""} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="preferredCallTime"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Best time to call</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g. After 3 PM, Mornings"
+                        {...field}
+                        value={field.value ?? ""}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <FormField

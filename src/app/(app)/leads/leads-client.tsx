@@ -19,12 +19,14 @@ export function LeadsClient({
   courses,
   salesTeam = [],
   canAssign = false,
+  hideOwnershipFilter = false,
 }: {
   rows: LeadRow[];
   total: number;
   courses: LeadCoursePickerItem[];
   salesTeam?: SalesTeamMember[];
   canAssign?: boolean;
+  hideOwnershipFilter?: boolean;
 }) {
   const [rawNew, setRawNew] = useQueryState("new", newParam);
   const sheetOpen = rawNew === "1";
@@ -47,6 +49,7 @@ export function LeadsClient({
         total={total}
         onNewLead={() => setSheetOpen(true)}
         courses={courses}
+        hideOwnershipFilter={hideOwnershipFilter}
       />
       {selectedIds.length > 0 ? (
         <BulkActionBar

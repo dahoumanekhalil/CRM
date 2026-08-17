@@ -86,6 +86,7 @@ export default async function LeadDetailPage({
   if (!lead) notFound();
 
   const sessionsForCourse = await loadSessionsForConvert(lead.courseId);
+  const interestedSession = lead.interestedSession ?? null;
 
   return (
     <>
@@ -100,6 +101,7 @@ export default async function LeadDetailPage({
               salesTeam={salesTeam}
               canAssign={canAssign}
               assignmentHistory={assignmentHistory}
+              interestedSession={interestedSession}
             />
           }
           communicationsSlot={<LeadCommunicationsTab leadId={lead.id} />}

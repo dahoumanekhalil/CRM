@@ -110,6 +110,7 @@ model Lead {
   lastName   String?
   email      String?
   phone      String?
+  preferredCallTime String?   // e.g. "Morning", "After 3 PM", free text from lead
   status     LeadStatus @default(NEW)
   source     String?
   notes      String?    @db.Text
@@ -119,8 +120,9 @@ model Lead {
   assignedById String?  // who last assigned this lead
   assignedAt   DateTime? // when the last assignment was made
   campaignId   String?
-  courseId     String?  // course this lead is interested in (from landing page)
-  studentId    String?  // set when the lead converts
+  courseId              String?  // course this lead is interested in (from landing page)
+  interestedSessionId   String?  // session chosen by Sales during qualification (before conversion)
+  studentId             String?  // set when the lead converts
   isHighPriority Boolean @default(false)
 
   // Retargeting / attribution — kept even after conversion so we can run
@@ -139,19 +141,21 @@ model Lead {
   updatedAt  DateTime   @updatedAt
   lastContactedAt DateTime?
 
-  owner             User?           @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  nextActionOwner   User?           @relation("LeadNextActionOwner", fields: [nextActionOwnerId], references: [id], onDelete: SetNull)
-  campaign          Campaign?       @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  course            Course?         @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  student           Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
-  communications    Communication[]
-  assignments       LeadAssignment[]
+  owner              User?           @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  nextActionOwner    User?           @relation("LeadNextActionOwner", fields: [nextActionOwnerId], references: [id], onDelete: SetNull)
+  campaign           Campaign?       @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  course             Course?         @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  interestedSession  CourseSession?  @relation("LeadInterestedSession", fields: [interestedSessionId], references: [id], onDelete: SetNull)
+  student            Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  communications     Communication[]
+  assignments        LeadAssignment[]
 
   @@index([status])
   @@index([ownerId])
   @@index([assignedById])
   @@index([campaignId])
   @@index([courseId])
+  @@index([interestedSessionId])
   @@index([createdAt])   // dashboard KPIs + reports use 30-day windows on this field
 }
 
@@ -160,8 +164,11 @@ enum LeadStatus {
   CONTACTED
   INTERESTED
   FOLLOW_UP
+  CONFIRMED
   REGISTERED
   LOST
+  NOT_INTERESTED
+  UNREACHABLE
 }
 
 // Immutable log of every lead ownership change.
@@ -303,6 +310,7 @@ model CourseSession {
   instructor    Instructor?    @relation(fields: [instructorId], references: [id], onDelete: SetNull)
   registrations Registration[]
   attendance    Attendance[]
+  interestedLeads Lead[]       @relation("LeadInterestedSession")
 
   @@index([courseId])
   @@index([status])

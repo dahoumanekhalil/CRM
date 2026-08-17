@@ -53,6 +53,8 @@ export const PERMISSIONS = {
   "dashboard.view": ALL_ROLES,
 
   // Sales / CRM
+  // sales.view — the dedicated Sales Manager workspace (assignment + analytics)
+  "sales.view": MANAGERS,
   "leads.view": SALES_SIDE,
   "leads.write": ["ADMIN", "MANAGER", "SALES", "MARKETING"] as const,
   // leads.assign — only managers/admins may assign/reassign leads to reps

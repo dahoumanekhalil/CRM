@@ -33,6 +33,12 @@ export const statusTone: Record<string, StatusTone> = {
   FOLLOW_UP: "warning",
   REGISTERED: "success",
   LOST: "neutral",
+  NOT_INTERESTED: "neutral",
+  UNREACHABLE: "danger",
+  // Payment aggregate statuses
+  UNPAID: "danger",
+  PARTIALLY_PAID: "warning",
+  FULLY_PAID: "success",
 
   // Courses / sessions
   DRAFT: "neutral",
@@ -45,7 +51,7 @@ export const statusTone: Record<string, StatusTone> = {
   COMPLETED: "success",
   CANCELLED: "danger",
 
-  // Registrations
+  // Registrations (CONFIRMED covers both lead "confirmed" and registration "confirmed")
   PENDING: "warning",
   CONFIRMED: "brand",
   ATTENDING: "brand",

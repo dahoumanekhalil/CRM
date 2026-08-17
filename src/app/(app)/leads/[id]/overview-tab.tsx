@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { format, formatDistanceToNow } from "date-fns";
-import { BookOpen, Calendar, Mail, Megaphone, Phone, User } from "lucide-react";
-import type { LeadDetail, SalesTeamMember, LeadAssignmentHistoryRow } from "../actions";
+import { BookOpen, Calendar, CalendarDays, Mail, MapPin, Megaphone, Phone, User } from "lucide-react";
+import type { LeadDetail, SalesTeamMember, LeadAssignmentHistoryRow, LeadInterestedSession } from "../actions";
 import { NextActionSection } from "./next-action-section";
 import { QuickActionsRow } from "./quick-actions-row";
 import { AssignLeadDialog } from "./assign-lead-dialog";
+import { SessionSelectorDialog, RemoveSessionButton } from "./session-selector";
+import { StatusBadge } from "@/components/primitives/status-badge";
 
 type UserPickerItem = { id: string; name: string | null; email: string };
 
@@ -14,12 +16,14 @@ export function OverviewTab({
   salesTeam = [],
   canAssign = false,
   assignmentHistory = [],
+  interestedSession = null,
 }: {
   lead: LeadDetail;
   users: UserPickerItem[];
   salesTeam?: SalesTeamMember[];
   canAssign?: boolean;
   assignmentHistory?: LeadAssignmentHistoryRow[];
+  interestedSession?: LeadInterestedSession | null;
 }) {
   const facts: Array<{
     label: string;
@@ -91,6 +95,62 @@ export function OverviewTab({
             <p className="text-sm text-muted-foreground">
               No notes yet. Add context from the Edit sheet — a good place to
               record what they said on the phone or in a demo.
+            </p>
+          )}
+        </section>
+
+        {/* Session interest — the session Sales has chosen for this lead */}
+        <section className="rounded-xl border border-border/60 bg-card p-6">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h2 className="text-sm font-semibold tracking-tight flex items-center gap-1.5">
+              <CalendarDays className="size-4 text-muted-foreground" />
+              Course Session
+            </h2>
+            <SessionSelectorDialog
+              leadId={lead.id}
+              currentSessionId={interestedSession?.id ?? null}
+              trigger={
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline font-medium"
+                >
+                  {interestedSession ? "Change session" : "Select session"}
+                </button>
+              }
+            />
+          </div>
+          {interestedSession ? (
+            <div className="space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">
+                    {interestedSession.course?.name ?? "Course"}
+                    {interestedSession.title ? (
+                      <span className="text-muted-foreground"> — {interestedSession.title}</span>
+                    ) : null}
+                  </p>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <CalendarDays className="size-3" />
+                      {format(new Date(interestedSession.startDate), "d MMM yyyy")}
+                    </span>
+                    {interestedSession.city || interestedSession.location ? (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="size-3" />
+                        {interestedSession.city ?? interestedSession.location}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <StatusBadge status={interestedSession.status} />
+                  <RemoveSessionButton leadId={lead.id} />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No session selected yet. Contact the lead and choose a session date after discussing availability.
             </p>
           )}
         </section>

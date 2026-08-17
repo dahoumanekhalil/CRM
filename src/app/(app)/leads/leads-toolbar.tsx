@@ -38,10 +38,12 @@ export function LeadsToolbar({
   total,
   onNewLead,
   courses,
+  hideOwnershipFilter = false,
 }: {
   total: number;
   onNewLead: () => void;
   courses: LeadCoursePickerItem[];
+  hideOwnershipFilter?: boolean;
 }) {
   const [filters, setFilters] = useQueryStates(leadFilters);
 
@@ -140,33 +142,35 @@ export function LeadsToolbar({
 
       {/* Ownership + priority chips */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground me-0.5">Owner:</span>
-          {(
-            [
-              { value: "all", label: "All" },
-              { value: "mine", label: "Mine" },
-              { value: "unassigned", label: "Unassigned" },
-            ] as const
-          ).map((f) => {
-            const active = filters.ownership === f.value;
-            return (
-              <button
-                key={f.value}
-                type="button"
-                onClick={() => setFilters({ ownership: f.value, page: 1 })}
-                className={cn(
-                  "inline-flex h-6 items-center rounded-full border px-2.5 text-[11px] font-medium transition-colors",
-                  active
-                    ? "border-transparent bg-primary text-primary-foreground"
-                    : "border-border/60 text-muted-foreground hover:border-border hover:text-foreground"
-                )}
-              >
-                {f.label}
-              </button>
-            );
-          })}
-        </div>
+        {!hideOwnershipFilter && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground me-0.5">Owner:</span>
+            {(
+              [
+                { value: "all", label: "All" },
+                { value: "mine", label: "Mine" },
+                { value: "unassigned", label: "Unassigned" },
+              ] as const
+            ).map((f) => {
+              const active = filters.ownership === f.value;
+              return (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => setFilters({ ownership: f.value, page: 1 })}
+                  className={cn(
+                    "inline-flex h-6 items-center rounded-full border px-2.5 text-[11px] font-medium transition-colors",
+                    active
+                      ? "border-transparent bg-primary text-primary-foreground"
+                      : "border-border/60 text-muted-foreground hover:border-border hover:text-foreground"
+                  )}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         <button
           type="button"

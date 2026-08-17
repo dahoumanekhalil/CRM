@@ -42,6 +42,7 @@ export async function createLead(
         lastName: emptyToNull(d.lastName),
         email: emptyToNull(d.email),
         phone: emptyToNull(d.phone),
+        preferredCallTime: emptyToNull(d.preferredCallTime ?? "") as never,
         source: emptyToNull(d.source),
         notes: emptyToNull(d.notes),
         status: d.status,
@@ -69,7 +70,10 @@ export async function createLead(
   }
 }
 
-export async function listLeads(input: ListLeadsInput) {
+export async function listLeads(
+  input: ListLeadsInput,
+  serverOptions?: { contactedOnly?: boolean }
+) {
   const parsed = listLeadsSchema.parse(input);
   const session = await requirePermissionAction("leads.view");
 
@@ -112,6 +116,10 @@ export async function listLeads(input: ListLeadsInput) {
     }
   }
 
+  if (serverOptions?.contactedOnly) {
+    where.lastContactedAt = { not: null };
+  }
+
   if (parsed.q) {
     const term = parsed.q.trim();
     where.OR = [
@@ -136,6 +144,11 @@ export async function listLeads(input: ListLeadsInput) {
       include: {
         owner: { select: { id: true, name: true, email: true, image: true } },
         course: { select: { id: true, name: true, slug: true } },
+        communications: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { body: true, type: true, createdAt: true },
+        },
       },
     }),
     prisma.lead.count({ where }),
@@ -179,6 +192,19 @@ export async function getLeadDetail(id: string) {
       course: { select: { id: true, name: true, slug: true } },
       campaign: { select: { id: true, name: true } },
       student: { select: { id: true, firstName: true, lastName: true } },
+      interestedSession: {
+        select: {
+          id: true,
+          title: true,
+          startDate: true,
+          endDate: true,
+          location: true,
+          city: true,
+          capacity: true,
+          status: true,
+          course: { select: { id: true, name: true, slug: true } },
+        },
+      },
     },
   });
 }
@@ -515,6 +541,7 @@ export async function updateLead(
         lastName: emptyToNull(d.lastName),
         email: emptyToNull(d.email),
         phone: emptyToNull(d.phone),
+        preferredCallTime: emptyToNull(d.preferredCallTime ?? "") as never,
         source: emptyToNull(d.source),
         notes: emptyToNull(d.notes),
         status: d.status,
@@ -785,6 +812,192 @@ export async function bulkAssignLeads(
   } catch (err) {
     console.error("bulkAssignLeads failed", err);
     return { ok: false, error: "Couldn't assign the leads. Please try again." };
+  }
+}
+
+// ── Session selection ──────────────────────────────────────────────────────────
+
+// Fetch the session currently assigned to a lead (interestedSessionId).
+// Uses raw SQL because the field was added by the sales_operations migration
+// and the Prisma client needs to be regenerated to expose it in the typed API.
+export async function getLeadInterestedSession(leadId: string) {
+  await requirePermissionAction("leads.view");
+
+  const rows = await prisma.$queryRaw<Array<{ interestedSessionId: string | null }>>`
+    SELECT "interestedSessionId" FROM "Lead" WHERE id = ${leadId}
+  `;
+  const sessionId = rows[0]?.interestedSessionId;
+  if (!sessionId) return null;
+
+  const session = await prisma.courseSession.findUnique({
+    where: { id: sessionId },
+    select: {
+      id: true,
+      title: true,
+      startDate: true,
+      endDate: true,
+      location: true,
+      city: true,
+      capacity: true,
+      status: true,
+      course: { select: { id: true, name: true, slug: true } },
+    },
+  });
+
+  return session;
+}
+
+export type LeadInterestedSession = NonNullable<Awaited<ReturnType<typeof getLeadInterestedSession>>>;
+
+// Sessions the Sales rep can present to the lead for a given course.
+export async function getAvailableSessionsForLead(leadId: string) {
+  const session = await requirePermissionAction("leads.view");
+
+  const lead = await prisma.lead.findUnique({
+    where: session.user.role === "SALES"
+      ? { id: leadId, ownerId: session.user.id }
+      : { id: leadId },
+    select: { id: true, courseId: true },
+  });
+  if (!lead) return [];
+
+  const now = new Date();
+  const rows = await prisma.courseSession.findMany({
+    where: {
+      endDate: { gte: now },
+      status: { notIn: ["CANCELLED", "COMPLETED"] },
+      ...(lead.courseId ? { courseId: lead.courseId } : {}),
+    },
+    orderBy: { startDate: "asc" },
+    take: 30,
+    include: {
+      course: { select: { id: true, name: true, slug: true } },
+      _count: {
+        select: {
+          registrations: {
+            where: { status: { in: ["PENDING", "CONFIRMED", "ATTENDING", "COMPLETED"] } },
+          },
+        },
+      },
+    },
+  });
+
+  return rows.map((s) => ({
+    id: s.id,
+    title: s.title,
+    courseId: s.courseId,
+    courseName: s.course.name,
+    courseSlug: s.course.slug,
+    startDate: s.startDate,
+    endDate: s.endDate,
+    location: s.location,
+    city: s.city,
+    capacity: s.capacity,
+    seatsTaken: s._count.registrations,
+    status: s.status,
+  }));
+}
+
+export type AvailableSession = Awaited<ReturnType<typeof getAvailableSessionsForLead>>[number];
+
+// Sales rep assigns a specific session to a lead (before formal conversion).
+// Records the previous session in activity so the history is auditable.
+export async function assignLeadSession(
+  leadId: string,
+  sessionId: string,
+): Promise<Result<null>> {
+  const session = await requirePermissionAction("leads.write");
+
+  const access = await assertLeadWriteAccess(leadId, session.user.id, session.user.role ?? "");
+  if (!access.ok) return access;
+
+  const [lead, courseSession] = await Promise.all([
+    prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { id: true, courseId: true },
+    }),
+    prisma.courseSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        courseId: true,
+        startDate: true,
+        capacity: true,
+        status: true,
+        course: { select: { id: true, name: true } },
+        _count: {
+          select: {
+            registrations: {
+              where: { status: { in: ["PENDING", "CONFIRMED", "ATTENDING", "COMPLETED"] } },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  if (!lead) return { ok: false, error: "Lead not found." };
+  if (!courseSession) return { ok: false, error: "Session not found." };
+  if (courseSession.status === "CANCELLED") return { ok: false, error: "This session has been cancelled." };
+  if (courseSession.status === "FULL" || courseSession._count.registrations >= courseSession.capacity) {
+    return { ok: false, error: "This session is at full capacity." };
+  }
+
+  try {
+    // Use raw SQL because interestedSessionId is a new column added by the
+    // sales_operations migration — prisma generate needs to run after the
+    // migration to surface this field in the generated client types.
+    await prisma.$executeRaw`
+      UPDATE "Lead"
+      SET "interestedSessionId" = ${sessionId},
+          "courseId" = ${courseSession.courseId},
+          "updatedAt" = NOW()
+      WHERE id = ${leadId}
+    `;
+
+    void recordActivity({
+      type: "lead.session_selected",
+      entity: "Lead",
+      entityId: leadId,
+      userId: session.user.id,
+      meta: {
+        newSessionId: sessionId,
+        courseName: courseSession.course.name,
+        sessionDate: courseSession.startDate.toISOString(),
+      },
+    });
+
+    revalidatePath(`/leads/${leadId}`);
+    revalidatePath("/leads");
+    return { ok: true, data: null };
+  } catch (err) {
+    console.error("assignLeadSession failed", err);
+    return { ok: false, error: "Couldn't assign the session. Please try again." };
+  }
+}
+
+// Remove the session interest without full conversion.
+export async function removeLeadSession(leadId: string): Promise<Result<null>> {
+  const session = await requirePermissionAction("leads.write");
+  const access = await assertLeadWriteAccess(leadId, session.user.id, session.user.role ?? "");
+  if (!access.ok) return access;
+
+  try {
+    await prisma.$executeRaw`
+      UPDATE "Lead" SET "interestedSessionId" = NULL, "updatedAt" = NOW()
+      WHERE id = ${leadId}
+    `;
+    void recordActivity({
+      type: "lead.session_removed",
+      entity: "Lead",
+      entityId: leadId,
+      userId: session.user.id,
+    });
+    revalidatePath(`/leads/${leadId}`);
+    return { ok: true, data: null };
+  } catch (err) {
+    console.error("removeLeadSession failed", err);
+    return { ok: false, error: "Couldn't remove the session. Please try again." };
   }
 }
 

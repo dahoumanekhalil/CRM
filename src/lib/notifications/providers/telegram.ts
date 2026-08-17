@@ -8,6 +8,7 @@ import {
   msgC5cSessionReminder,
   msgC5dPaymentPending,
   msgC5eLeadAssigned,
+  msgC5eLeadAssignedBulk,
   msgC5fDailyDigest,
   type DailyDigestStats,
 } from "@/lib/telegram/message-templates";
@@ -63,13 +64,18 @@ function formatMessage(intent: NotificationIntent): string | null {
         deepLink(`/payments`),
       );
 
-    case "lead.assigned":
+    case "lead.assigned": {
+      const leadCount = num(payload.leadCount);
+      if (leadCount > 1) {
+        return msgC5eLeadAssignedBulk(leadCount, deepLink("/leads?ownership=mine"));
+      }
       if (!payload.leadName) return null;
       return msgC5eLeadAssigned(
         str(payload.leadName),
         typeof payload.courseName === "string" ? payload.courseName : null,
         deepLink(`/leads/${str(payload.leadId)}`),
       );
+    }
 
     case "daily.digest":
       if (!payload.date || !payload.stats) return null;

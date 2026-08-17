@@ -268,6 +268,18 @@ export function msgC5eLeadAssigned(
     : `👤 <b>New Lead</b>\n\n${escHtml(leadName)} has been assigned to you.${courseLinear}${link}`;
 }
 
+// C5e-bulk — Multiple leads assigned in a single batch action
+export function msgC5eLeadAssignedBulk(
+  count: number,
+  deepLink: string,
+  lang: Lang = "en"
+): string {
+  const link = deepLink ? `\n<a href="${deepLink}">Open My Leads</a>` : "";
+  return lang === "ar"
+    ? `📥 <b>عملاء محتملون جدد</b>\n\nتم تعيين <b>${count}</b> عملاء محتملين جدد لك.${link}`
+    : `📥 <b>New Leads Assigned</b>\n\nYou received <b>${count}</b> new lead${count !== 1 ? "s" : ""} to follow up.${link}`;
+}
+
 // C5f — Daily digest
 export interface DailyDigestStats {
   newLeads: number;
