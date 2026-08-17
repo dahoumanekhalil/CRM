@@ -4,9 +4,61 @@ import { CalendarDays, ClipboardList, GraduationCap } from "lucide-react";
 
 import { EmptyState } from "@/components/primitives/empty-state";
 import { StatusBadge } from "@/components/primitives/status-badge";
+import { cn } from "@/lib/utils";
 import { getRegistrationsForCourse } from "@/app/(app)/registrations/actions";
 
-export async function RegistrationsTab({ courseId }: { courseId: string }) {
+function CapacityBar({ filled, capacity }: { filled: number; capacity: number }) {
+  const pct = capacity > 0 ? Math.min((filled / capacity) * 100, 100) : 0;
+  const barColor =
+    pct >= 90 ? "bg-destructive" : pct >= 75 ? "bg-amber-500" : "bg-emerald-500";
+  const label =
+    pct >= 90 ? "text-destructive" : pct >= 75 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400";
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-medium text-foreground">
+          {filled} {filled === 1 ? "registration" : "registrations"}
+        </span>
+        {capacity > 0 ? (
+          <span className={cn("font-medium tabular-nums", label)}>
+            {Math.round(pct)}% capacity
+          </span>
+        ) : null}
+      </div>
+      {capacity > 0 ? (
+        <div
+          className="h-2 w-full overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-valuenow={filled}
+          aria-valuemax={capacity}
+          aria-label={`${filled} of ${capacity} seats filled`}
+        >
+          <div
+            className={cn("h-full rounded-full transition-all", barColor)}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      ) : null}
+      {capacity > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {filled} / {capacity} seats filled
+          {capacity - filled > 0 ? ` · ${capacity - filled} available` : " · Full"}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export async function RegistrationsTab({
+  courseId,
+  activeRegistrations,
+  totalCapacity,
+}: {
+  courseId: string;
+  activeRegistrations?: number;
+  totalCapacity?: number;
+}) {
   const rows = await getRegistrationsForCourse(courseId);
 
   if (rows.length === 0) {
@@ -20,6 +72,14 @@ export async function RegistrationsTab({ courseId }: { courseId: string }) {
   }
 
   return (
+    <div className="space-y-4">
+      {/* Capacity bar */}
+      {(activeRegistrations !== undefined && totalCapacity !== undefined && totalCapacity > 0) ? (
+        <div className="rounded-xl border border-border/60 bg-card px-5 py-4">
+          <CapacityBar filled={activeRegistrations} capacity={totalCapacity} />
+        </div>
+      ) : null}
+
     <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
       <header className="border-b border-border/60 px-4 py-3">
         <h2 className="text-sm font-semibold tracking-tight">
@@ -84,6 +144,7 @@ export async function RegistrationsTab({ courseId }: { courseId: string }) {
           );
         })}
       </ul>
+    </div>
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import { PageHeader } from "@/components/primitives/page-header";
-import { listCoursesForLeadFilter, listLeads } from "./actions";
+import { listCoursesForLeadFilter, listLeads, listSalesTeam } from "./actions";
 import { listLeadsSchema } from "@/lib/schemas/lead";
 import { LeadsClient } from "./leads-client";
+import { auth } from "@/auth";
+import { hasPermission } from "@/lib/permissions";
 
 export const metadata = { title: "Leads" };
 
@@ -22,9 +24,13 @@ export default async function LeadsPage({
     sortDir: typeof params.sortDir === "string" ? params.sortDir : undefined,
   });
 
-  const [{ rows, total }, courses] = await Promise.all([
+  const session = await auth();
+  const canAssign = hasPermission(session?.user?.role, "leads.assign");
+
+  const [{ rows, total }, courses, salesTeam] = await Promise.all([
     listLeads(parsed),
     listCoursesForLeadFilter(),
+    canAssign ? listSalesTeam() : Promise.resolve([]),
   ]);
 
   return (
@@ -35,7 +41,13 @@ export default async function LeadsPage({
         description="Manage everyone who's shown interest in your courses."
       />
       <div className="flex-1 space-y-4 p-6">
-        <LeadsClient rows={rows} total={total} courses={courses} />
+        <LeadsClient
+          rows={rows}
+          total={total}
+          courses={courses}
+          salesTeam={salesTeam}
+          canAssign={canAssign}
+        />
       </div>
     </>
   );

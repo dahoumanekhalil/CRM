@@ -6,14 +6,8 @@ import { EmptyState } from "@/components/primitives/empty-state";
 import { StatusBadge } from "@/components/primitives/status-badge";
 import { getPaymentsForStudent } from "@/app/(app)/payments/actions";
 import { requirePermissionPage } from "@/lib/auth-guards";
+import { PAYMENT_METHOD_LABELS } from "@/lib/schemas/payment";
 import { StudentPaymentsTabClient } from "./payments-tab-client";
-
-const humanize = (s: string) =>
-  s
-    .toLowerCase()
-    .split("_")
-    .map((w) => w[0]?.toUpperCase() + w.slice(1))
-    .join(" ");
 
 function formatMoney(amount: number, currency: string): string {
   try {
@@ -39,9 +33,9 @@ export async function PaymentsTab({
     return (
       <div className="rounded-xl border border-border/60 bg-muted/20 p-8 text-center">
         <Lock className="mx-auto mb-2 size-5 text-muted-foreground" />
-        <p className="text-sm font-medium">Payments are Finance-scoped</p>
+        <p className="text-sm font-medium">Payments are restricted</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Only Admin, Manager and Finance roles can view payment history.
+          Only Admin, Manager, Finance and Sales roles can view payment history.
         </p>
       </div>
     );
@@ -132,7 +126,7 @@ export async function PaymentsTab({
                   </span>
                   <StatusBadge status={p.status} />
                   <span className="text-xs text-muted-foreground">
-                    {humanize(p.method)}
+                    {PAYMENT_METHOD_LABELS[p.method as keyof typeof PAYMENT_METHOD_LABELS] ?? p.method}
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">

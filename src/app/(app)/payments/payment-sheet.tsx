@@ -46,6 +46,8 @@ import {
   updatePaymentSchema,
   PAYMENT_CURRENCIES,
   PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_METHOD_REFERENCE_LABEL,
   PAYMENT_STATUSES,
   type CreatePaymentInput,
   type UpdatePaymentInput,
@@ -60,7 +62,8 @@ import {
   type StudentPaymentRow,
 } from "./actions";
 
-const humanize = (s: string) =>
+
+const humanizeStatus = (s: string) =>
   s
     .toLowerCase()
     .split("_")
@@ -134,7 +137,7 @@ export function PaymentSheet(props: CreateProps | EditProps) {
       studentId: lockedStudentId ?? "",
       registrationId: props.presetRegistrationId,
       amount: undefined as unknown as number,
-      currency: "USD",
+      currency: "DZD",
       method: "CASH",
       status: "COMPLETED",
       reference: "",
@@ -180,6 +183,14 @@ export function PaymentSheet(props: CreateProps | EditProps) {
     })();
     return () => controller.abort();
   }, [currentStudentId]);
+
+  const currentMethod = form.watch("method") ?? "CASH";
+  const referenceLabel =
+    PAYMENT_METHOD_REFERENCE_LABEL[
+      currentMethod as keyof typeof PAYMENT_METHOD_REFERENCE_LABEL
+    ] ?? "Reference";
+  const hasReferenceLabel =
+    !!currentMethod && currentMethod in PAYMENT_METHOD_REFERENCE_LABEL;
 
   const [pending, startTransition] = React.useTransition();
 
@@ -390,7 +401,7 @@ export function PaymentSheet(props: CreateProps | EditProps) {
                         <SelectContent>
                           {PAYMENT_METHODS.map((m) => (
                             <SelectItem key={m} value={m}>
-                              {humanize(m)}
+                              {PAYMENT_METHOD_LABELS[m]}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -414,7 +425,7 @@ export function PaymentSheet(props: CreateProps | EditProps) {
                         <SelectContent>
                           {PAYMENT_STATUSES.map((s) => (
                             <SelectItem key={s} value={s}>
-                              {humanize(s)}
+                              {humanizeStatus(s)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -455,10 +466,14 @@ export function PaymentSheet(props: CreateProps | EditProps) {
                 name="reference"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Reference</FormLabel>
+                    <FormLabel>{referenceLabel}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Receipt or transaction id (optional)"
+                        placeholder={
+                          hasReferenceLabel
+                            ? `Enter ${referenceLabel.toLowerCase()}`
+                            : "Receipt or transaction id (optional)"
+                        }
                         {...field}
                       />
                     </FormControl>

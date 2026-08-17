@@ -68,6 +68,7 @@ export const COMMANDS: readonly StaticCommand[] = [
     keywords: ["new", "add", "course"],
     icon: Plus,
     href: "/courses?new=1",
+    roles: ["ADMIN", "MANAGER"] as const,
     available: true,
   },
   {
@@ -77,6 +78,7 @@ export const COMMANDS: readonly StaticCommand[] = [
     keywords: ["new", "add", "lead", "prospect"],
     icon: Plus,
     href: "/leads?new=1",
+    roles: ["ADMIN", "MANAGER", "SALES", "MARKETING"] as const,
     available: true,
   },
   {
@@ -86,6 +88,7 @@ export const COMMANDS: readonly StaticCommand[] = [
     keywords: ["new", "page", "landing", "website"],
     icon: Plus,
     href: "/landing-pages/new",
+    roles: ["ADMIN", "MANAGER", "MARKETING"] as const,
     available: true,
   },
   {
@@ -95,6 +98,7 @@ export const COMMANDS: readonly StaticCommand[] = [
     keywords: ["new", "add", "session", "cohort", "schedule"],
     icon: Plus,
     href: "/sessions?new=1",
+    roles: ["ADMIN", "MANAGER"] as const,
     available: true,
   },
   {
@@ -124,6 +128,7 @@ export const COMMANDS: readonly StaticCommand[] = [
     keywords: ["new", "add", "student", "learner"],
     icon: Plus,
     href: "/students?new=1",
+    roles: ["ADMIN", "MANAGER", "SALES"] as const,
     available: true,
   },
   {
@@ -171,7 +176,7 @@ export const COMMANDS: readonly StaticCommand[] = [
     keywords: ["clients", "accounts", "payers", "revenue"],
     icon: Users,
     href: "/customers",
-    available: true,
+    available: false,
   },
   {
     id: "goto.students",
@@ -256,7 +261,7 @@ export const COMMANDS: readonly StaticCommand[] = [
     icon: Receipt,
     href: "/transactions",
     roles: ["ADMIN", "MANAGER", "FINANCE"],
-    available: true,
+    available: false,
   },
   {
     id: "goto.reports",

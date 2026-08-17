@@ -30,8 +30,13 @@ model User {
   accounts       Account[]
   sessions       Session[]
 
-  ownedLeads        Lead[]           @relation("LeadOwner")
-  nextActionLeads   Lead[]           @relation("LeadNextActionOwner")
+  ownedLeads             Lead[]           @relation("LeadOwner")
+  assignedLeads          LeadAssignment[] @relation("LeadAssignmentTo")
+  madeAssignments        LeadAssignment[] @relation("LeadAssignmentBy")
+  salesRegistrations     Registration[]   @relation("RegistrationSalesOwner")
+  recordedPayments       Payment[]        @relation("PaymentRecordedBy")
+  nextActionLeads        Lead[]           @relation("LeadNextActionOwner")
+  nextActionStudents     Student[]        @relation("StudentNextActionOwner")
   createdCourses    Course[]         @relation("CourseCreatedBy")
   instructor        Instructor?
   activities        Activity[]
@@ -39,6 +44,15 @@ model User {
   attendance        Attendance[]     @relation("AttendanceRecordedBy")
   landingPages      LandingPage[]    @relation("LandingPageCreatedBy")
   tasks             Task[]           @relation("TaskOwner")
+  notifications     Notification[]
+  telegramLinkTokens       TelegramLinkToken[]     @relation("TelegramLinkTokenEmployee")
+  initiatedLinkTokens      TelegramLinkToken[]     @relation("TelegramLinkTokenInitiator")
+  notificationPreferences  NotificationPreference[]
+  scheduledNotifications   ScheduledNotification[]
+  telegramConnection       TelegramConnection?     @relation("TelegramConnectionUser")
+  initiatedConnections     TelegramConnection[]    @relation("TelegramConnectionInitiator")
+  telegramAuditActions     TelegramConnectionAudit[] @relation("TelegramAuditActor")
+  telegramAuditTargets     TelegramConnectionAudit[] @relation("TelegramAuditTarget")
 }
 
 enum UserRole {
@@ -101,10 +115,12 @@ model Lead {
   notes      String?    @db.Text
   tags       String[]   @default([])
 
-  ownerId    String?
-  campaignId String?
-  courseId   String?    // course this lead is interested in (from landing page)
-  studentId  String?    // set when the lead converts
+  ownerId      String?
+  assignedById String?  // who last assigned this lead
+  assignedAt   DateTime? // when the last assignment was made
+  campaignId   String?
+  courseId     String?  // course this lead is interested in (from landing page)
+  studentId    String?  // set when the lead converts
   isHighPriority Boolean @default(false)
 
   // Retargeting / attribution — kept even after conversion so we can run
@@ -129,9 +145,11 @@ model Lead {
   course            Course?         @relation(fields: [courseId], references: [id], onDelete: SetNull)
   student           Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
   communications    Communication[]
+  assignments       LeadAssignment[]
 
   @@index([status])
   @@index([ownerId])
+  @@index([assignedById])
   @@index([campaignId])
   @@index([courseId])
   @@index([createdAt])   // dashboard KPIs + reports use 30-day windows on this field
@@ -144,6 +162,25 @@ enum LeadStatus {
   FOLLOW_UP
   REGISTERED
   LOST
+}
+
+// Immutable log of every lead ownership change.
+// One row per assignment event — never updated, only appended.
+model LeadAssignment {
+  id           String   @id @default(cuid())
+  leadId       String
+  assignedToId String?  // null means unassigned (returned to inbox)
+  assignedById String
+  note         String?  @db.Text // optional reason / context
+  createdAt    DateTime @default(now())
+
+  lead       Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedTo User? @relation("LeadAssignmentTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedBy User  @relation("LeadAssignmentBy", fields: [assignedById], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([assignedToId])
+  @@index([createdAt])
 }
 
 // ==========================================================
@@ -161,13 +198,20 @@ model Student {
   notes       String?  @db.Text
   tags        String[] @default([])
 
+  nextAction        String?
+  nextActionDue     DateTime?
+  nextActionOwnerId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  leads          Lead[]
-  registrations  Registration[]
-  payments       Payment[]
-  communications Communication[]
+  leads             Lead[]
+  registrations     Registration[]
+  payments          Payment[]
+  communications    Communication[]
+  nextActionOwner   User?    @relation("StudentNextActionOwner", fields: [nextActionOwnerId], references: [id], onDelete: SetNull)
+
+  @@index([nextActionOwnerId])
 }
 
 model Instructor {
@@ -289,16 +333,21 @@ model Registration {
   confirmedAt  DateTime?
   cancelledAt  DateTime?
   notes        String?            @db.Text
+  // Sales tracking — who closed this registration and at what price.
+  salesOwnerId String?
+  agreedPrice  Decimal?           @db.Decimal(12, 2)
 
-  student    Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  session    CourseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  payments   Payment[]
-  attendance Attendance[]
+  student      Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  session      CourseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  salesOwner   User?         @relation("RegistrationSalesOwner", fields: [salesOwnerId], references: [id], onDelete: SetNull)
+  payments     Payment[]
+  attendance   Attendance[]
 
   @@unique([studentId, sessionId])
   @@index([status])
-  @@index([sessionId])     // FK lookup in getRegistrationsForSession; unique covers studentId prefix already
-  @@index([registeredAt])  // dashboard new-registrations KPI + reports date range queries
+  @@index([sessionId])
+  @@index([salesOwnerId])
+  @@index([registeredAt])
 }
 
 enum RegistrationStatus {
@@ -316,6 +365,7 @@ model Attendance {
   sessionId      String
   sessionDate    DateTime         @db.Date
   status         AttendanceStatus @default(PRESENT)
+  checkInMethod  String           @default("manual")
   notes          String?
   recordedById   String?
   recordedAt     DateTime         @default(now())
@@ -340,28 +390,34 @@ model Payment {
   studentId      String
   registrationId String?
   amount         Decimal       @db.Decimal(12, 2)
-  currency       String        @default("USD")
+  currency       String        @default("DZD")
   method         PaymentMethod @default(CASH)
   status         PaymentStatus @default(PENDING)
   reference      String?
   notes          String?       @db.Text
   paidAt         DateTime?
+  recordedById   String?       // who entered this payment into the system
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   student      Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
   registration Registration? @relation(fields: [registrationId], references: [id], onDelete: SetNull)
+  recordedBy   User?         @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
 
   @@index([studentId])
   @@index([status])
   @@index([paidAt])
+  @@index([recordedById])
+  @@index([registrationId])
 }
 
 enum PaymentMethod {
   CASH
-  CARD
   BANK_TRANSFER
+  BANK_CHECK
+  POSTAL_MOBILE  // BaridiMob and similar postal/mobile payment services
+  CARD
   ONLINE
   OTHER
 }
@@ -561,4 +617,176 @@ model OrgSettings {
   currency    String   @default("USD")
   timezone    String   @default("UTC")
   updatedAt   DateTime @updatedAt
+}
+
+// ==========================================================
+// Notifications — in-app persistent notification center
+// ==========================================================
+
+enum NotificationCategory {
+  ACTION_REQUIRED
+  INFO
+  SUCCESS
+  SYSTEM
+}
+
+model Notification {
+  id          String               @id @default(cuid())
+  recipientId String
+  type        String
+  category    NotificationCategory @default(INFO)
+  title       String
+  body        String?
+  entityType  String?
+  entityId    String?
+  read        Boolean              @default(false)
+  readAt      DateTime?
+  priority    Int                  @default(0)
+  createdAt   DateTime             @default(now())
+
+  recipient User @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, read])
+  @@index([recipientId, createdAt])
+  @@index([type, entityId, recipientId])
+}
+
+// ==========================================================
+// Telegram — one-time account linking tokens
+// See LEVEL2.md §C3 (Employee Telegram Connection Flow)
+// ==========================================================
+
+model TelegramLinkToken {
+  id               String    @id @default(cuid())
+  employeeId       String
+  token            String    @unique
+  expiresAt        DateTime
+  usedAt           DateTime?
+  createdAt        DateTime  @default(now())
+  initiatedById    String?
+  connectionMethod String    @default("SELF") // "SELF" | "ADMIN" | "MANAGER"
+
+  employee    User  @relation("TelegramLinkTokenEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  initiatedBy User? @relation("TelegramLinkTokenInitiator", fields: [initiatedById], references: [id], onDelete: SetNull)
+
+  @@index([employeeId])
+}
+
+// ==========================================================
+// Notification preferences — per-employee, per-type, per-channel
+// See LEVEL2.md §C4 (Notification Preferences)
+// ==========================================================
+
+model NotificationPreference {
+  id         String  @id @default(cuid())
+  employeeId String
+  type       String  // NotificationType string value
+  channel    String  // "telegram" | "inapp"
+  enabled    Boolean @default(true)
+
+  employee User @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, type, channel])
+  @@index([employeeId, channel])
+}
+
+// ==========================================================
+// Scheduled notifications — reliable async delivery queue
+// See LEVEL2.md §C6 (Notification Scheduling Engine)
+// ==========================================================
+
+enum ScheduledNotificationStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+model ScheduledNotification {
+  id            String                      @id @default(cuid())
+  type          String
+  recipientId   String
+  payload       Json
+  scheduledAt   DateTime
+  status        ScheduledNotificationStatus @default(PENDING)
+  attemptCount  Int                         @default(0)
+  lastAttemptAt DateTime?
+  failureReason String?                     @db.Text
+  sentAt        DateTime?
+  provider      String                      @default("all") // "all" | "telegram" | "inapp"
+  entityType    String?
+  entityId      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  recipient User @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledAt])   // processQueue — PENDING + due-time filter
+  @@index([status, sentAt])        // delivery stats latency queries
+  @@index([recipientId])
+  @@index([entityType, entityId])
+}
+
+// ==========================================================
+// Telegram — connection state machine & audit trail
+// See LEVEL2.md §C — Phase 1 (TelegramConnection model)
+// ==========================================================
+
+enum TelegramConnectionStatus {
+  PENDING
+  CONNECTED
+  DISABLED
+  REVOKED
+  BLOCKED
+  ERROR
+}
+
+enum TelegramConnectionMethod {
+  SELF
+  ADMIN
+  MANAGER
+}
+
+model TelegramConnection {
+  id               String                   @id @default(cuid())
+  userId           String                   @unique
+  telegramUserId   String?
+  telegramChatId   String?
+  username         String?
+  firstName        String?
+  lastName         String?
+  status           TelegramConnectionStatus @default(PENDING)
+  connectionMethod TelegramConnectionMethod @default(SELF)
+  connectedById    String?
+  connectedAt      DateTime?
+  lastVerifiedAt   DateTime?
+  disconnectedAt   DateTime?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  user        User  @relation("TelegramConnectionUser", fields: [userId], references: [id], onDelete: Cascade)
+  connectedBy User? @relation("TelegramConnectionInitiator", fields: [connectedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([telegramChatId])
+}
+
+model TelegramConnectionAudit {
+  id           String   @id @default(cuid())
+  actorId      String
+  targetUserId String
+  action       String   // "connected" | "disconnected" | "revoked" | "admin_initiated" | "re_linked"
+  method       String?
+  reason       String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  actor      User @relation("TelegramAuditActor", fields: [actorId], references: [id], onDelete: Cascade)
+  targetUser User @relation("TelegramAuditTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@index([targetUserId])
+  @@index([actorId])
+  @@index([createdAt])
 }

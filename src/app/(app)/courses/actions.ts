@@ -146,16 +146,43 @@ export async function getCourseDetail(slug: string) {
   });
   if (!course) return null;
 
-  // Registrations don't hang off Course directly — count via sessions.
-  const registrations = await prisma.registration.count({
-    where: { session: { courseId: course.id } },
-  });
+  const now = new Date();
+  const [registrations, activeRegistrations, publishedPage, nextSession, capacityAgg] =
+    await Promise.all([
+      // All registrations (tab count pill)
+      prisma.registration.count({
+        where: { session: { courseId: course.id } },
+      }),
+      // Capacity-counting statuses only (for the seats bar)
+      prisma.registration.count({
+        where: {
+          session: { courseId: course.id },
+          status: { in: ["PENDING", "CONFIRMED", "ATTENDING", "COMPLETED"] },
+        },
+      }),
+      prisma.landingPage.findFirst({
+        where: { courseId: course.id, status: "PUBLISHED" },
+        select: { slug: true },
+        orderBy: { publishedAt: "desc" },
+      }),
+      // Nearest upcoming non-cancelled session
+      prisma.courseSession.findFirst({
+        where: {
+          courseId: course.id,
+          startDate: { gte: now },
+          status: { notIn: ["CANCELLED", "COMPLETED"] },
+        },
+        orderBy: { startDate: "asc" },
+        select: { id: true, startDate: true, title: true, capacity: true },
+      }),
+      // Total capacity across all non-cancelled sessions
+      prisma.courseSession.aggregate({
+        where: { courseId: course.id, status: { notIn: ["CANCELLED"] } },
+        _sum: { capacity: true },
+      }),
+    ]);
 
-  const publishedPage = await prisma.landingPage.findFirst({
-    where: { courseId: course.id, status: "PUBLISHED" },
-    select: { slug: true },
-    orderBy: { publishedAt: "desc" },
-  });
+  const totalCapacity = capacityAgg._sum.capacity ?? 0;
 
   // Prisma Decimal doesn't serialize across the server→client boundary — flatten
   // to a plain number here so consumers never have to think about it.
@@ -168,7 +195,10 @@ export async function getCourseDetail(slug: string) {
   return {
     course: serializedCourse,
     registrations,
+    activeRegistrations,
     publishedPageSlug: publishedPage?.slug ?? null,
+    nextSession: nextSession ?? null,
+    totalCapacity,
   };
 }
 

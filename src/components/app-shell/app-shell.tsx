@@ -11,9 +11,11 @@ import { QuickCreateMenu } from "./quick-create-menu";
 
 export function AppShell({
   session,
+  initialUnreadCount = 0,
   children,
 }: {
   session: Session | null;
+  initialUnreadCount?: number;
   children: React.ReactNode;
 }) {
   const [commandOpen, setCommandOpen] = React.useState(false);
@@ -47,7 +49,11 @@ export function AppShell({
     <SidebarProvider>
       <AppSidebar session={session} onOpenCommand={() => setCommandOpen(true)} />
       <SidebarInset>
-        <AppTopbar onOpenCommand={() => setCommandOpen(true)} />
+        <AppTopbar
+          onOpenCommand={() => setCommandOpen(true)}
+          onOpenQuickCreate={() => setQuickCreateOpen(true)}
+          initialUnreadCount={initialUnreadCount}
+        />
         <div className="flex flex-1 flex-col">{children}</div>
       </SidebarInset>
       <CommandMenu

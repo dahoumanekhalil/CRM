@@ -3,21 +3,17 @@
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/auth";
+import { requirePermissionAction } from "@/lib/auth-guards";
 import {
   createRegistrationSchema,
   updateRegistrationStatusSchema,
   type CreateRegistrationInput,
   type RegistrationStatus,
 } from "@/lib/schemas/registration";
+import { recordActivity } from "@/lib/activity";
+import { NotificationService } from "@/lib/notifications/notification-service";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
-
-async function requireSession() {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Not authenticated");
-  return session;
-}
 
 function serializePrice(price: unknown): number | null {
   if (price === null || price === undefined) return null;
@@ -92,7 +88,7 @@ export async function createRegistration(
       error: parsed.error.issues[0]?.message ?? "Invalid input",
     };
   }
-  await requireSession();
+  const session = await requirePermissionAction("registrations.write");
   const d = parsed.data;
 
   // Dedupe — one registration per student per session (matches Prisma @@unique).
@@ -127,10 +123,73 @@ export async function createRegistration(
         notes: emptyToNull(d.notes),
         confirmedAt: d.status === "CONFIRMED" ? new Date() : null,
       },
-      select: { id: true, session: { select: { course: { select: { slug: true } } } } },
+      select: { id: true, session: { select: { title: true, course: { select: { id: true, slug: true, name: true } } } } },
     });
 
     await bumpSessionStatusIfFull(d.sessionId);
+
+    // Notify managers when a session reaches 90%+ capacity.
+    void (async () => {
+      const sess = await prisma.courseSession.findUnique({
+        where: { id: d.sessionId },
+        select: { capacity: true },
+      });
+      if (!sess || sess.capacity <= 0) return;
+      const taken = await prisma.registration.count({
+        where: { sessionId: d.sessionId, status: { in: CAPACITY_STATUSES } },
+      });
+      if (taken / sess.capacity >= 0.9) {
+        const recipients = await prisma.user.findMany({
+          where: { role: { in: ["ADMIN", "MANAGER"] } },
+          select: { id: true },
+        });
+        const sessionTitle = created.session?.title ?? "A session";
+        const courseName = created.session?.course?.name ?? "";
+        const pct = Math.round((taken / sess.capacity) * 100);
+        for (const u of recipients) {
+          NotificationService.send({
+            recipientId: u.id,
+            type: "session.nearCapacity",
+            payload: {
+              category: "INFO",
+              title: `${sessionTitle} is at ${pct}% capacity`,
+              body: courseName
+                ? `${courseName} — ${taken}/${sess.capacity} seats filled`
+                : `${taken}/${sess.capacity} seats filled`,
+              priority: 0,
+            },
+            entityType: "Course",
+            entityId: created.session?.course?.id ?? undefined,
+          });
+        }
+      }
+    })();
+
+    void recordActivity({
+      type: "registration.created",
+      entity: "Student",
+      entityId: d.studentId,
+      userId: session.user.id,
+      meta: {
+        registrationId: created.id,
+        sessionTitle: created.session?.title ?? null,
+        courseName: created.session?.course?.name ?? null,
+      },
+    });
+    if (created.session?.course?.id) {
+      void recordActivity({
+        type: "registration.created",
+        entity: "Course",
+        entityId: created.session.course.id,
+        userId: session.user.id,
+        meta: {
+          registrationId: created.id,
+          studentId: d.studentId,
+          sessionTitle: created.session?.title ?? null,
+          courseName: created.session?.course?.name ?? null,
+        },
+      });
+    }
 
     revalidatePath("/sessions");
     revalidatePath(`/students/${d.studentId}`);
@@ -158,7 +217,7 @@ export async function setRegistrationStatus(
       error: parsed.error.issues[0]?.message ?? "Invalid input",
     };
   }
-  await requireSession();
+  await requirePermissionAction("registrations.write");
 
   const existing = await prisma.registration.findUnique({
     where: { id },
@@ -197,7 +256,7 @@ export async function setRegistrationStatus(
 
 // Registrations for a specific student — used in student workspace tab.
 export async function getRegistrationsForStudent(studentId: string) {
-  await requireSession();
+  await requirePermissionAction("students.view");
   const rows = await prisma.registration.findMany({
     where: { studentId },
     orderBy: { registeredAt: "desc" },
@@ -233,7 +292,7 @@ export type StudentRegistrationRow = Awaited<
 
 // Registrations for all sessions of a course — used in course detail tab.
 export async function getRegistrationsForCourse(courseId: string) {
-  await requireSession();
+  await requirePermissionAction("courses.view");
   const rows = await prisma.registration.findMany({
     where: { session: { courseId } },
     orderBy: { registeredAt: "desc" },

@@ -12,6 +12,8 @@ import {
   type ListTasksInput,
 } from "@/lib/schemas/task";
 import type { Prisma } from "@prisma/client";
+import { recordActivity } from "@/lib/activity";
+import { NotificationService } from "@/lib/notifications/notification-service";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -65,6 +67,33 @@ export async function createTask(
       select: { id: true },
     });
 
+    if (d.entityType && d.entityId) {
+      void recordActivity({
+        type: "task.created",
+        entity: d.entityType,
+        entityId: d.entityId,
+        userId: session.user.id,
+        meta: { taskId: task.id, taskTitle: d.title },
+      });
+    }
+
+    // Notify assignee when a task is created for someone else.
+    const assigneeId = d.ownerId ?? session.user.id;
+    if (assigneeId !== session.user.id) {
+      NotificationService.send({
+        recipientId: assigneeId,
+        type: "task.assigned",
+        payload: {
+          category: "ACTION_REQUIRED",
+          title: `New task assigned: ${d.title}`,
+          body: d.dueDate ? `Due ${new Date(d.dueDate).toLocaleDateString()}` : undefined,
+          priority: 1,
+        },
+        entityType: "Task",
+        entityId: task.id,
+      });
+    }
+
     revalidatePath("/tasks");
     if (d.entityType && d.entityId) {
       revalidatePath(`/${entityRoute(d.entityType)}/${d.entityId}`);
@@ -83,7 +112,7 @@ export async function createTask(
 export async function updateTask(
   input: UpdateTaskInput
 ): Promise<Result<null>> {
-  await requirePermissionAction("tasks.write");
+  const session = await requirePermissionAction("tasks.write");
 
   const parsed = updateTaskSchema.safeParse(input);
   if (!parsed.success) {
@@ -94,7 +123,7 @@ export async function updateTask(
   try {
     const existing = await prisma.task.findUnique({
       where: { id: d.id },
-      select: { entityType: true, entityId: true },
+      select: { entityType: true, entityId: true, ownerId: true, title: true },
     });
 
     let completedAt: Date | null | undefined = undefined;
@@ -117,6 +146,26 @@ export async function updateTask(
       },
     });
 
+    // Notify new assignee when ownership changes.
+    if (
+      d.ownerId &&
+      existing?.ownerId !== d.ownerId &&
+      d.ownerId !== session.user.id
+    ) {
+      const taskTitle = existing?.title ?? "Task";
+      NotificationService.send({
+        recipientId: d.ownerId,
+        type: "task.assigned",
+        payload: {
+          category: "ACTION_REQUIRED",
+          title: `Task assigned to you: ${taskTitle}`,
+          priority: 1,
+        },
+        entityType: "Task",
+        entityId: d.id,
+      });
+    }
+
     revalidatePath("/tasks");
     if (existing?.entityType && existing.entityId) {
       revalidatePath(`/${entityRoute(existing.entityType)}/${existing.entityId}`);
@@ -136,9 +185,15 @@ export async function toggleTaskComplete(
   id: string,
   currentStatus: string
 ): Promise<Result<null>> {
-  await requirePermissionAction("tasks.write");
+  const session = await requirePermissionAction("tasks.write");
 
   const isDone = currentStatus === "COMPLETED";
+
+  const taskData = await prisma.task.findUnique({
+    where: { id },
+    select: { entityType: true, entityId: true, title: true },
+  });
+
   try {
     await prisma.task.update({
       where: { id },
@@ -147,6 +202,17 @@ export async function toggleTaskComplete(
         completedAt: isDone ? null : new Date(),
       },
     });
+
+    if (taskData?.entityType && taskData.entityId) {
+      void recordActivity({
+        type: isDone ? "task.reopened" : "task.completed",
+        entity: taskData.entityType,
+        entityId: taskData.entityId,
+        userId: session.user.id,
+        meta: { taskId: id, taskTitle: taskData.title },
+      });
+    }
+
     revalidatePath("/tasks");
     return { ok: true, data: null };
   } catch (err) {

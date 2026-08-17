@@ -2,7 +2,9 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { RegistrationStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getLeadDetail, listLeadsUsers } from "../actions";
+import { auth } from "@/auth";
+import { hasPermission } from "@/lib/permissions";
+import { getLeadDetail, listLeadsUsers, listSalesTeam, getLeadAssignmentHistory } from "../actions";
 import { LeadHeader } from "./lead-header";
 import { LeadTabsView } from "./lead-tabs";
 import { OverviewTab } from "./overview-tab";
@@ -72,9 +74,14 @@ export default async function LeadDetailPage({
   params: Params;
 }) {
   const { id } = await params;
-  const [lead, users] = await Promise.all([
+  const session = await auth();
+  const canAssign = hasPermission(session?.user?.role, "leads.assign");
+
+  const [lead, users, salesTeam, assignmentHistory] = await Promise.all([
     getLeadDetail(id),
     listLeadsUsers(),
+    canAssign ? listSalesTeam() : Promise.resolve([]),
+    getLeadAssignmentHistory(id),
   ]);
   if (!lead) notFound();
 
@@ -86,11 +93,19 @@ export default async function LeadDetailPage({
       <div className="flex-1 p-6">
         <LeadTabsView
           lead={lead}
-          overviewSlot={<OverviewTab lead={lead} users={users} />}
+          overviewSlot={
+            <OverviewTab
+              lead={lead}
+              users={users}
+              salesTeam={salesTeam}
+              canAssign={canAssign}
+              assignmentHistory={assignmentHistory}
+            />
+          }
           communicationsSlot={<LeadCommunicationsTab leadId={lead.id} />}
           notesSlot={<NotesTab lead={lead} />}
           attributionSlot={<AttributionTab lead={lead} />}
-          activitySlot={<ActivityTab lead={lead} />}
+          activitySlot={<ActivityTab leadId={lead.id} />}
         />
       </div>
     </>

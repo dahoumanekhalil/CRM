@@ -6,9 +6,17 @@ import { toast } from "sonner";
 import { Loader2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { LeadStatus } from "@/lib/schemas/lead";
-import { bulkUpdateLeadStatus } from "./actions";
+import { bulkUpdateLeadStatus, bulkAssignLeads } from "./actions";
+import type { SalesTeamMember } from "./actions";
 
 const humanize = (s: string) =>
   s
@@ -53,16 +61,39 @@ const QUICK_STATUSES: Array<{
 export function BulkActionBar({
   selectedIds,
   onClear,
+  salesTeam = [],
+  canAssign = false,
 }: {
   selectedIds: string[];
   onClear: () => void;
+  salesTeam?: SalesTeamMember[];
+  canAssign?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [pendingStatus, setPendingStatus] = React.useState<LeadStatus | null>(null);
+  const [assignPending, setAssignPending] = React.useState(false);
   const count = selectedIds.length;
 
   if (count === 0) return null;
+
+  const handleBulkAssign = (assigneeId: string) => {
+    setAssignPending(true);
+    startTransition(async () => {
+      const res = await bulkAssignLeads(selectedIds, assigneeId);
+      setAssignPending(false);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      const name = salesTeam.find((u) => u.id === assigneeId)?.name ?? "rep";
+      toast.success(
+        `${res.data.assigned} ${res.data.assigned === 1 ? "lead" : "leads"} assigned to ${name}`
+      );
+      onClear();
+      router.refresh();
+    });
+  };
 
   const applyStatus = (status: LeadStatus) => {
     setPendingStatus(status);
@@ -87,6 +118,20 @@ export function BulkActionBar({
         {count} {count === 1 ? "lead" : "leads"} selected
       </span>
       <div className="h-4 w-px bg-border/60" aria-hidden />
+      {canAssign && salesTeam.length > 0 ? (
+        <Select onValueChange={handleBulkAssign} disabled={pending || assignPending}>
+          <SelectTrigger className="h-7 w-auto gap-1.5 border-dashed px-2.5 text-xs font-medium">
+            <SelectValue placeholder="Assign to…" />
+          </SelectTrigger>
+          <SelectContent>
+            {salesTeam.map((u) => (
+              <SelectItem key={u.id} value={u.id}>
+                {u.name ?? u.email}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
       {QUICK_STATUSES.map(({ status, label, className }) => (
         <button
           key={status}

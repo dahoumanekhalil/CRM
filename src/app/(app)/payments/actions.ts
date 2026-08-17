@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requirePermissionAction } from "@/lib/auth-guards";
+import { NotificationService } from "@/lib/notifications/notification-service";
+import { recordActivity } from "@/lib/activity";
 import {
   createPaymentSchema,
   listPaymentsSchema,
@@ -44,7 +46,7 @@ export async function createPayment(
       error: parsed.error.issues[0]?.message ?? "Invalid input",
     };
   }
-  await requireWritePayments();
+  const session = await requireWritePayments();
   const d = parsed.data;
 
   // Guard: if a registrationId was passed, verify it belongs to the student.
@@ -75,12 +77,51 @@ export async function createPayment(
         reference: emptyToNull(d.reference),
         notes: emptyToNull(d.notes),
         paidAt: parsePaidAt(d.paidAt, d.status),
+        recordedById: session.user.id,
       },
       select: {
         id: true,
         registration: {
           select: { session: { select: { course: { select: { slug: true } } } } },
         },
+      },
+    });
+
+    // Notify Finance-side users when a payment is created and needs confirmation.
+    if (d.status === "PENDING") {
+      void (async () => {
+        const recipients = await prisma.user.findMany({
+          where: { role: { in: ["ADMIN", "MANAGER", "FINANCE"] } },
+          select: { id: true },
+        });
+        for (const u of recipients) {
+          NotificationService.send({
+            recipientId: u.id,
+            type: "payment.pending",
+            payload: {
+              category: "ACTION_REQUIRED",
+              title: "New payment needs confirmation",
+              body: `Amount: ${Number(d.amount).toLocaleString()} ${d.currency}`,
+              priority: 1,
+            },
+            entityType: "Payment",
+            entityId: created.id,
+          });
+        }
+      })();
+    }
+
+    void recordActivity({
+      type: "payment.recorded",
+      entity: "Student",
+      entityId: d.studentId,
+      userId: session.user.id,
+      meta: {
+        paymentId: created.id,
+        amount: Number(d.amount),
+        currency: d.currency,
+        method: d.method,
+        registrationId: d.registrationId ?? null,
       },
     });
 
@@ -388,3 +429,181 @@ export async function getPaymentsForCourse(courseId: string) {
 export type CoursePaymentRow = Awaited<
   ReturnType<typeof getPaymentsForCourse>
 >[number];
+
+// Payment summary for a specific registration — shows agreed price, total paid, remaining balance.
+export async function getRegistrationPaymentSummary(registrationId: string) {
+  await requireViewPayments();
+
+  const reg = await prisma.registration.findUnique({
+    where: { id: registrationId },
+    select: {
+      id: true,
+      agreedPrice: true,
+      session: {
+        select: { price: true, course: { select: { name: true } } },
+      },
+      payments: {
+        where: { status: "COMPLETED" },
+        select: { amount: true },
+      },
+    },
+  });
+  if (!reg) return null;
+
+  const agreedPrice =
+    reg.agreedPrice != null
+      ? serializeAmount(reg.agreedPrice)
+      : serializeAmount(reg.session.price);
+
+  const totalPaid = reg.payments.reduce(
+    (sum, p) => sum + serializeAmount(p.amount),
+    0
+  );
+
+  const remaining = Math.max(0, agreedPrice - totalPaid);
+
+  const paymentStatus =
+    agreedPrice === 0
+      ? ("FULLY_PAID" as const)
+      : totalPaid === 0
+        ? ("UNPAID" as const)
+        : remaining === 0
+          ? ("FULLY_PAID" as const)
+          : ("PARTIALLY_PAID" as const);
+
+  return {
+    registrationId,
+    agreedPrice,
+    totalPaid,
+    remaining,
+    paymentStatus,
+    courseName: reg.session.course.name,
+  };
+}
+
+export type RegistrationPaymentSummary = Exclude<
+  Awaited<ReturnType<typeof getRegistrationPaymentSummary>>,
+  null
+>;
+
+// Outstanding balances across all registrations — used by finance/manager views.
+export async function getOutstandingBalances(options?: {
+  studentId?: string;
+  courseId?: string;
+  limit?: number;
+}) {
+  await requireViewPayments();
+
+  const regs = await prisma.registration.findMany({
+    where: {
+      ...(options?.studentId ? { studentId: options.studentId } : {}),
+      ...(options?.courseId
+        ? { session: { courseId: options.courseId } }
+        : {}),
+      status: { in: ["PENDING", "CONFIRMED", "ATTENDING"] },
+    },
+    take: options?.limit ?? 100,
+    orderBy: { registeredAt: "desc" },
+    select: {
+      id: true,
+      studentId: true,
+      agreedPrice: true,
+      student: { select: { id: true, firstName: true, lastName: true, email: true } },
+      session: {
+        select: {
+          price: true,
+          title: true,
+          course: { select: { id: true, name: true, slug: true } },
+        },
+      },
+      payments: {
+        where: { status: "COMPLETED" },
+        select: { amount: true },
+      },
+    },
+  });
+
+  return regs
+    .map((reg) => {
+      const agreedPrice =
+        reg.agreedPrice != null
+          ? serializeAmount(reg.agreedPrice)
+          : serializeAmount(reg.session.price);
+      const totalPaid = reg.payments.reduce(
+        (sum, p) => sum + serializeAmount(p.amount),
+        0
+      );
+      const remaining = Math.max(0, agreedPrice - totalPaid);
+      const paymentStatus =
+        agreedPrice === 0
+          ? ("FULLY_PAID" as const)
+          : totalPaid === 0
+            ? ("UNPAID" as const)
+            : remaining === 0
+              ? ("FULLY_PAID" as const)
+              : ("PARTIALLY_PAID" as const);
+      return {
+        registrationId: reg.id,
+        student: reg.student,
+        session: reg.session,
+        agreedPrice,
+        totalPaid,
+        remaining,
+        paymentStatus,
+      };
+    })
+    .filter((r) => r.paymentStatus !== "FULLY_PAID");
+}
+
+export type OutstandingBalanceRow = Awaited<
+  ReturnType<typeof getOutstandingBalances>
+>[number];
+
+// Batch payment summaries for all registrations of a student — used in registrations tab.
+export async function getPaymentSummariesForStudent(studentId: string) {
+  await requireViewPayments();
+
+  const regs = await prisma.registration.findMany({
+    where: { studentId },
+    select: {
+      id: true,
+      agreedPrice: true,
+      session: { select: { price: true } },
+      payments: {
+        where: { status: "COMPLETED" },
+        select: { amount: true },
+      },
+    },
+  });
+
+  return Object.fromEntries(
+    regs.map((reg) => {
+      const agreedPrice =
+        reg.agreedPrice != null
+          ? serializeAmount(reg.agreedPrice)
+          : serializeAmount(reg.session.price);
+      const totalPaid = reg.payments.reduce(
+        (sum, p) => sum + serializeAmount(p.amount),
+        0
+      );
+      const remaining = Math.max(0, agreedPrice - totalPaid);
+      const paymentStatus =
+        agreedPrice === 0
+          ? ("FULLY_PAID" as const)
+          : totalPaid === 0
+            ? ("UNPAID" as const)
+            : remaining === 0
+              ? ("FULLY_PAID" as const)
+              : ("PARTIALLY_PAID" as const);
+      return [reg.id, { agreedPrice, totalPaid, remaining, paymentStatus }];
+    })
+  ) as Record<
+    string,
+    {
+      agreedPrice: number;
+      totalPaid: number;
+      remaining: number;
+      paymentStatus: "UNPAID" | "PARTIALLY_PAID" | "FULLY_PAID";
+    }
+  >;
+}

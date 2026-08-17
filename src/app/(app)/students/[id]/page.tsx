@@ -97,7 +97,7 @@ export default async function StudentDetailPage({
           }
           communicationsSlot={<StudentCommunicationsTab studentId={student.id} />}
           notesSlot={<NotesTab student={student} />}
-          activitySlot={<ActivityTab student={student} />}
+          activitySlot={<ActivityTab studentId={student.id} />}
         />
       </div>
     </>

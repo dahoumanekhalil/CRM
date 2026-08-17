@@ -3,12 +3,15 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
+  BookOpen,
+  CheckSquare,
   Clock,
   Contact,
   CornerDownLeft,
   Globe,
-  BookOpen,
   GraduationCap,
+  Megaphone,
+  Wallet,
 } from "lucide-react";
 
 import {
@@ -127,7 +130,10 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
     results.leads.length +
       results.courses.length +
       results.pages.length +
-      results.students.length >
+      results.students.length +
+      results.tasks.length +
+      results.campaigns.length +
+      results.payments.length >
       0;
 
   const showRecents = !query.trim() && recentCommands.length > 0;
@@ -146,7 +152,11 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
       />
       <CommandList>
         <CommandEmpty>
-          {searching ? "Searching…" : "No results found."}
+          {searching
+            ? "Searching…"
+            : queryReady
+              ? `No results for "${query.trim()}".`
+              : "No results found."}
         </CommandEmpty>
 
         {showRecents && (
@@ -190,41 +200,11 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
                   <ResultItem
                     key={`lead-${lead.id}`}
                     icon={Contact}
+                    entityType="Lead"
                     label={lead.name}
                     subline={lead.subline}
-                    onSelect={() => runNav("/leads")}
-                    // cmdk fuzzy-matches on value/keywords, so include name+subline.
+                    onSelect={() => runNav(`/leads/${lead.id}`)}
                     value={`lead ${lead.name} ${lead.subline ?? ""}`}
-                  />
-                ))}
-              </CommandGroup>
-            )}
-            {results!.courses.length > 0 && (
-              <CommandGroup heading="Courses">
-                {results!.courses.map((course) => (
-                  <ResultItem
-                    key={`course-${course.id}`}
-                    icon={BookOpen}
-                    label={course.name}
-                    subline={course.subline}
-                    onSelect={() => runNav(`/courses/${course.slug}`)}
-                    value={`course ${course.name} ${course.subline ?? ""}`}
-                  />
-                ))}
-              </CommandGroup>
-            )}
-            {results!.pages.length > 0 && (
-              <CommandGroup heading="Landing pages">
-                {results!.pages.map((page) => (
-                  <ResultItem
-                    key={`page-${page.id}`}
-                    icon={Globe}
-                    label={page.title}
-                    subline={page.subline}
-                    onSelect={() =>
-                      runNav(`/landing-pages/${page.id}/edit`)
-                    }
-                    value={`page ${page.title} ${page.subline ?? ""}`}
                   />
                 ))}
               </CommandGroup>
@@ -235,10 +215,86 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
                   <ResultItem
                     key={`student-${student.id}`}
                     icon={GraduationCap}
+                    entityType="Student"
                     label={student.name}
                     subline={student.subline}
                     onSelect={() => runNav(`/students/${student.id}`)}
                     value={`student ${student.name} ${student.subline ?? ""}`}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+            {results!.courses.length > 0 && (
+              <CommandGroup heading="Courses">
+                {results!.courses.map((course) => (
+                  <ResultItem
+                    key={`course-${course.id}`}
+                    icon={BookOpen}
+                    entityType="Course"
+                    label={course.name}
+                    subline={course.subline}
+                    onSelect={() => runNav(`/courses/${course.slug}`)}
+                    value={`course ${course.name} ${course.subline ?? ""}`}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+            {results!.tasks.length > 0 && (
+              <CommandGroup heading="Tasks">
+                {results!.tasks.map((task) => (
+                  <ResultItem
+                    key={`task-${task.id}`}
+                    icon={CheckSquare}
+                    entityType="Task"
+                    label={task.title}
+                    subline={task.subline}
+                    onSelect={() => runNav("/tasks")}
+                    value={`task ${task.title} ${task.subline ?? ""}`}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+            {results!.pages.length > 0 && (
+              <CommandGroup heading="Landing pages">
+                {results!.pages.map((page) => (
+                  <ResultItem
+                    key={`page-${page.id}`}
+                    icon={Globe}
+                    entityType="Page"
+                    label={page.title}
+                    subline={page.subline}
+                    onSelect={() => runNav(`/landing-pages/${page.id}/edit`)}
+                    value={`page ${page.title} ${page.subline ?? ""}`}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+            {results!.campaigns.length > 0 && (
+              <CommandGroup heading="Campaigns">
+                {results!.campaigns.map((campaign) => (
+                  <ResultItem
+                    key={`campaign-${campaign.id}`}
+                    icon={Megaphone}
+                    entityType="Campaign"
+                    label={campaign.name}
+                    subline={campaign.subline}
+                    onSelect={() => runNav(`/campaigns/${campaign.id}`)}
+                    value={`campaign ${campaign.name} ${campaign.subline ?? ""}`}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+            {results!.payments.length > 0 && (
+              <CommandGroup heading="Payments">
+                {results!.payments.map((payment) => (
+                  <ResultItem
+                    key={`payment-${payment.id}`}
+                    icon={Wallet}
+                    entityType="Payment"
+                    label={payment.name}
+                    subline={payment.subline}
+                    onSelect={() => runNav("/payments")}
+                    value={`payment ${payment.name} ${payment.subline ?? ""}`}
                   />
                 ))}
               </CommandGroup>
@@ -306,12 +362,14 @@ function StaticCommandItem({
 
 function ResultItem({
   icon: Icon,
+  entityType,
   label,
   subline,
   value,
   onSelect,
 }: {
   icon: React.ComponentType<{ className?: string }>;
+  entityType?: string;
   label: string;
   subline?: string;
   value: string;
@@ -319,9 +377,16 @@ function ResultItem({
 }) {
   return (
     <CommandItem value={value} onSelect={onSelect}>
-      <Icon className={cn("size-4")} />
+      <Icon className={cn("size-4 shrink-0")} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate">{label}</span>
+        <div className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {entityType && (
+            <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">
+              {entityType}
+            </span>
+          )}
+        </div>
         {subline ? (
           <span className="truncate text-xs text-muted-foreground">
             {subline}

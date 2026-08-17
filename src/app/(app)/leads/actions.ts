@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/auth";
+import { requirePermissionAction } from "@/lib/auth-guards";
 import {
   createLeadSchema,
   listLeadsSchema,
@@ -16,16 +16,11 @@ import {
   convertLeadSchema,
   type ConvertLeadInput,
 } from "@/lib/schemas/registration";
+import { recordActivity } from "@/lib/activity";
+import { NotificationService } from "@/lib/notifications/notification-service";
+import { NotificationTypes } from "@/lib/notifications/types";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
-
-async function requireSession() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new Error("Not authenticated");
-  }
-  return session;
-}
 
 export async function createLead(
   input: CreateLeadInput
@@ -35,7 +30,7 @@ export async function createLead(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  const session = await requireSession();
+  const session = await requirePermissionAction("leads.write");
 
   const d = parsed.data;
   const emptyToNull = (v: string) => (v.trim() === "" ? null : v);
@@ -51,9 +46,19 @@ export async function createLead(
         notes: emptyToNull(d.notes),
         status: d.status,
         tags: d.tags,
-        ownerId: session.user.id,
+        // New leads start unassigned — Sales Manager must assign them explicitly.
+        // Exception: if the creator is a SALES rep, assign to themselves directly.
+        ownerId: session.user.role === "SALES" ? session.user.id : null,
       },
       select: { id: true },
+    });
+
+    void recordActivity({
+      type: "lead.created",
+      entity: "Lead",
+      entityId: created.id,
+      userId: session.user.id,
+      meta: { source: d.source ?? null },
     });
 
     revalidatePath("/leads");
@@ -66,9 +71,20 @@ export async function createLead(
 
 export async function listLeads(input: ListLeadsInput) {
   const parsed = listLeadsSchema.parse(input);
-  const session = await requireSession();
+  const session = await requirePermissionAction("leads.view");
 
   const where: Prisma.LeadWhereInput = {};
+
+  // SALES role: always scoped to their own leads only — no global visibility.
+  if (session.user.role === "SALES") {
+    where.ownerId = session.user.id;
+  } else {
+    if (parsed.ownership === "mine") {
+      where.ownerId = session.user.id;
+    } else if (parsed.ownership === "unassigned") {
+      where.ownerId = null;
+    }
+  }
 
   if (parsed.status !== "ALL") {
     where.status = parsed.status;
@@ -76,12 +92,6 @@ export async function listLeads(input: ListLeadsInput) {
 
   if (parsed.courseId) {
     where.courseId = parsed.courseId;
-  }
-
-  if (parsed.ownership === "mine") {
-    where.ownerId = session.user.id;
-  } else if (parsed.ownership === "unassigned") {
-    where.ownerId = null;
   }
 
   if (parsed.highPriority) {
@@ -143,7 +153,7 @@ export type LeadRow = Awaited<ReturnType<typeof listLeads>>["rows"][number];
 
 // Cheap picker for the leads toolbar's course filter dropdown.
 export async function listCoursesForLeadFilter() {
-  await requireSession();
+  await requirePermissionAction("leads.view");
   return prisma.course.findMany({
     where: { status: { in: ["PUBLISHED", "DRAFT"] } },
     select: { id: true, name: true },
@@ -156,9 +166,13 @@ export type LeadCoursePickerItem = Awaited<
 >[number];
 
 export async function getLeadDetail(id: string) {
-  await requireSession();
+  const session = await requirePermissionAction("leads.view");
+  // SALES role can only fetch leads assigned to them.
+  const where: Prisma.LeadWhereUniqueInput = session.user.role === "SALES"
+    ? { id, ownerId: session.user.id }
+    : { id };
   return prisma.lead.findUnique({
-    where: { id },
+    where,
     include: {
       owner: { select: { id: true, name: true, email: true, image: true } },
       nextActionOwner: { select: { id: true, name: true, email: true } },
@@ -169,15 +183,27 @@ export async function getLeadDetail(id: string) {
   });
 }
 
+async function assertLeadWriteAccess(leadId: string, sessionUserId: string, role: string): Promise<Result<null>> {
+  if (role === "SALES") {
+    const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { ownerId: true } });
+    if (!lead) return { ok: false, error: "Lead not found." };
+    if (lead.ownerId !== sessionUserId) return { ok: false, error: "You can only edit your own leads." };
+  }
+  return { ok: true, data: null };
+}
+
 export async function updateLeadNextAction(
   leadId: string,
   data: { nextAction: string; nextActionDue: string | null; nextActionOwnerId: string | null }
 ): Promise<Result<null>> {
-  await requireSession();
+  const session = await requirePermissionAction("leads.write");
 
   if (!data.nextAction.trim()) {
     return { ok: false, error: "Next action text is required." };
   }
+
+  const access = await assertLeadWriteAccess(leadId, session.user.id, session.user.role ?? "");
+  if (!access.ok) return access;
 
   try {
     await prisma.lead.update({
@@ -198,7 +224,9 @@ export async function updateLeadNextAction(
 }
 
 export async function clearLeadNextAction(leadId: string): Promise<Result<null>> {
-  await requireSession();
+  const session = await requirePermissionAction("leads.write");
+  const access = await assertLeadWriteAccess(leadId, session.user.id, session.user.role ?? "");
+  if (!access.ok) return access;
 
   try {
     await prisma.lead.update({
@@ -215,7 +243,9 @@ export async function clearLeadNextAction(leadId: string): Promise<Result<null>>
 }
 
 export async function toggleLeadPriority(leadId: string): Promise<Result<{ isHighPriority: boolean }>> {
-  await requireSession();
+  const session = await requirePermissionAction("leads.write");
+  const access = await assertLeadWriteAccess(leadId, session.user.id, session.user.role ?? "");
+  if (!access.ok) return { ok: false, error: access.error };
   try {
     const current = await prisma.lead.findUnique({
       where: { id: leadId },
@@ -239,7 +269,7 @@ export async function toggleLeadPriority(leadId: string): Promise<Result<{ isHig
 }
 
 export async function listLeadsUsers() {
-  await requireSession();
+  await requirePermissionAction("leads.view");
   return prisma.user.findMany({
     orderBy: { name: "asc" },
     select: { id: true, name: true, email: true },
@@ -266,7 +296,7 @@ export async function convertLead(
       error: parsed.error.issues[0]?.message ?? "Invalid input",
     };
   }
-  await requireSession();
+  const session = await requirePermissionAction("leads.write");
   const d = parsed.data;
 
   const lead = await prisma.lead.findUnique({
@@ -332,7 +362,7 @@ export async function convertLead(
   if (d.sessionId) {
     // Guard capacity + dedupe by hand (we don't want to import the
     // registrations action here and create a server → server call).
-    const session = await prisma.courseSession.findUnique({
+    const courseSession = await prisma.courseSession.findUnique({
       where: { id: d.sessionId },
       select: {
         id: true,
@@ -340,7 +370,7 @@ export async function convertLead(
         course: { select: { slug: true } },
       },
     });
-    if (!session) return { ok: false, error: "Session not found." };
+    if (!courseSession) return { ok: false, error: "Session not found." };
 
     const clash = await prisma.registration.findUnique({
       where: {
@@ -359,10 +389,10 @@ export async function convertLead(
           },
         },
       });
-      if (taken >= session.capacity) {
+      if (taken >= courseSession.capacity) {
         return {
           ok: false,
-          error: `Session is at capacity (${taken}/${session.capacity}).`,
+          error: `Session is at capacity (${taken}/${courseSession.capacity}).`,
         };
       }
       const reg = await prisma.registration.create({
@@ -374,6 +404,7 @@ export async function convertLead(
           notes: d.notes.trim() === "" ? null : d.notes,
           confirmedAt:
             d.registrationStatus === "CONFIRMED" ? new Date() : null,
+          salesOwnerId: session.user.id,
         },
         select: { id: true },
       });
@@ -389,15 +420,15 @@ export async function convertLead(
         },
       },
     });
-    if (taken >= session.capacity) {
+    if (taken >= courseSession.capacity) {
       await prisma.courseSession.update({
         where: { id: d.sessionId },
         data: { status: "FULL" },
       });
     }
 
-    if (session.course?.slug) {
-      revalidatePath(`/courses/${session.course.slug}`);
+    if (courseSession.course?.slug) {
+      revalidatePath(`/courses/${courseSession.course.slug}`);
     }
     revalidatePath("/sessions");
   }
@@ -410,6 +441,14 @@ export async function convertLead(
       studentId,
       status: registrationId ? "REGISTERED" : "INTERESTED",
     },
+  });
+
+  void recordActivity({
+    type: "lead.converted",
+    entity: "Lead",
+    entityId: lead.id,
+    userId: session.user.id,
+    meta: { studentId },
   });
 
   revalidatePath("/leads");
@@ -428,10 +467,14 @@ export async function bulkUpdateLeadStatus(
 ): Promise<Result<{ count: number }>> {
   if (!ids.length) return { ok: false, error: "No leads selected." };
   if (ids.length > 500) return { ok: false, error: "Select at most 500 leads at a time." };
-  await requireSession();
+  const session = await requirePermissionAction("leads.write");
   try {
+    // SALES role: can only update leads assigned to them.
+    const where: Prisma.LeadWhereInput = session.user.role === "SALES"
+      ? { id: { in: ids }, ownerId: session.user.id }
+      : { id: { in: ids } };
     const result = await prisma.lead.updateMany({
-      where: { id: { in: ids } },
+      where,
       data: { status: status as never },
     });
     revalidatePath("/leads");
@@ -452,9 +495,17 @@ export async function updateLead(
       error: parsed.error.issues[0]?.message ?? "Invalid input",
     };
   }
-  await requireSession();
+  const session = await requirePermissionAction("leads.write");
   const d = parsed.data;
   const emptyToNull = (v: string) => (v.trim() === "" ? null : v);
+
+  const access = await assertLeadWriteAccess(d.id, session.user.id, session.user.role ?? "");
+  if (!access.ok) return { ok: false, error: access.error };
+
+  const oldLead = await prisma.lead.findUnique({
+    where: { id: d.id },
+    select: { status: true, ownerId: true },
+  });
 
   try {
     await prisma.lead.update({
@@ -472,6 +523,23 @@ export async function updateLead(
       },
       select: { id: true },
     });
+
+    void recordActivity({
+      type: "lead.updated",
+      entity: "Lead",
+      entityId: d.id,
+      userId: session.user.id,
+    });
+    if (oldLead && d.status && d.status !== oldLead.status) {
+      void recordActivity({
+        type: "lead.status_changed",
+        entity: "Lead",
+        entityId: d.id,
+        userId: session.user.id,
+        meta: { from: oldLead.status, to: d.status },
+      });
+    }
+
     revalidatePath("/leads");
     revalidatePath(`/leads/${d.id}`);
     return { ok: true, data: { id: d.id } };
@@ -482,7 +550,8 @@ export async function updateLead(
 }
 
 export async function deleteLead(id: string): Promise<Result<null>> {
-  await requireSession();
+  // Deletion is restricted to managers/admins — SALES reps cannot delete leads.
+  await requirePermissionAction("leads.assign");
   try {
     await prisma.lead.delete({ where: { id } });
     revalidatePath("/leads");
@@ -493,11 +562,100 @@ export async function deleteLead(id: string): Promise<Result<null>> {
   }
 }
 
+export async function updateLeadOwner(
+  leadId: string,
+  newOwnerId: string | null,
+  note?: string,
+): Promise<Result<null>> {
+  // Only ADMIN/MANAGER can assign leads — enforced server-side.
+  const session = await requirePermissionAction("leads.assign");
+
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: {
+      ownerId: true,
+      firstName: true,
+      lastName: true,
+      courseId: true,
+      course: { select: { name: true } },
+    },
+  });
+  if (!lead) return { ok: false, error: "Lead not found." };
+
+  let targetUser: { id: string; role: string; name: string | null } | null = null;
+  if (newOwnerId) {
+    targetUser = await prisma.user.findUnique({
+      where: { id: newOwnerId },
+      select: { id: true, role: true, name: true },
+    });
+    if (!targetUser) return { ok: false, error: "Assignee not found." };
+  }
+
+  const now = new Date();
+
+  try {
+    await prisma.$transaction([
+      prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          ownerId: newOwnerId,
+          assignedById: newOwnerId ? session.user.id : null,
+          assignedAt: newOwnerId ? now : null,
+        },
+        select: { id: true },
+      }),
+      prisma.leadAssignment.create({
+        data: {
+          leadId,
+          assignedToId: newOwnerId ?? undefined,
+          assignedById: session.user.id,
+          note: note?.trim() || null,
+        },
+      }),
+    ]);
+
+    void recordActivity({
+      type: "lead.assigned",
+      entity: "Lead",
+      entityId: leadId,
+      userId: session.user.id,
+      meta: { from: lead.ownerId, to: newOwnerId, toName: targetUser?.name ?? null },
+    });
+
+    // Notify the new owner if they differ from the assigner.
+    if (newOwnerId && newOwnerId !== session.user.id) {
+      const leadName = [lead.firstName, lead.lastName].filter(Boolean).join(" ");
+      NotificationService.send({
+        recipientId: newOwnerId,
+        type: NotificationTypes.LEAD_ASSIGNED,
+        entityType: "Lead",
+        entityId: leadId,
+        payload: {
+          title: "New lead assigned to you",
+          body: leadName,
+          leadName,
+          leadId,
+          courseName: lead.course?.name ?? null,
+        },
+      });
+    }
+
+    revalidatePath("/leads");
+    revalidatePath(`/leads/${leadId}`);
+    return { ok: true, data: null };
+  } catch (err) {
+    console.error("updateLeadOwner failed", err);
+    return { ok: false, error: "Couldn't reassign the lead. Please try again." };
+  }
+}
+
 export async function updateLeadNotes(
   leadId: string,
   notes: string
 ): Promise<Result<null>> {
-  await requireSession();
+  const session = await requirePermissionAction("leads.write");
+  const access = await assertLeadWriteAccess(leadId, session.user.id, session.user.role ?? "");
+  if (!access.ok) return access;
   const trimmed = notes.trim();
   try {
     await prisma.lead.update({
@@ -512,3 +670,189 @@ export async function updateLeadNotes(
     return { ok: false, error: "Couldn't save the notes. Please try again." };
   }
 }
+
+// ── Sales Team ────────────────────────────────────────────────────────────────
+
+// Picker: users who can receive lead assignments (SALES + MANAGER + ADMIN).
+export async function listSalesTeam() {
+  await requirePermissionAction("leads.assign");
+  return prisma.user.findMany({
+    where: { role: { in: ["ADMIN", "MANAGER", "SALES"] } },
+    select: { id: true, name: true, email: true, role: true, image: true },
+    orderBy: [{ role: "asc" }, { name: "asc" }],
+  });
+}
+
+export type SalesTeamMember = Awaited<ReturnType<typeof listSalesTeam>>[number];
+
+// Full team workload summary for the manager dashboard.
+export async function getSalesTeamWorkload() {
+  await requirePermissionAction("leads.assign");
+
+  const reps = await prisma.user.findMany({
+    where: { role: { in: ["ADMIN", "MANAGER", "SALES"] } },
+    select: { id: true, name: true, email: true, role: true },
+    orderBy: { name: "asc" },
+  });
+
+  const stats = await Promise.all(
+    reps.map(async (rep) => {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const [assigned, pendingFollowUp, registered] = await Promise.all([
+        prisma.lead.count({ where: { ownerId: rep.id, status: { notIn: ["LOST", "REGISTERED"] } } }),
+        prisma.lead.count({ where: { ownerId: rep.id, nextActionDue: { lt: now, gte: todayStart } } }),
+        prisma.lead.count({ where: { ownerId: rep.id, status: "REGISTERED" } }),
+      ]);
+      return { ...rep, assigned, pendingFollowUp, registered };
+    })
+  );
+
+  return stats;
+}
+
+export type SalesTeamWorkloadRow = Awaited<ReturnType<typeof getSalesTeamWorkload>>[number];
+
+// ── Bulk assignment ────────────────────────────────────────────────────────────
+
+export async function bulkAssignLeads(
+  leadIds: string[],
+  assigneeId: string,
+  note?: string,
+): Promise<Result<{ assigned: number }>> {
+  if (!leadIds.length) return { ok: false, error: "No leads selected." };
+  if (leadIds.length > 200) return { ok: false, error: "Select at most 200 leads at a time." };
+
+  const session = await requirePermissionAction("leads.assign");
+
+  // Validate the assignee.
+  const assignee = await prisma.user.findUnique({
+    where: { id: assigneeId },
+    select: { id: true, role: true, name: true },
+  });
+  if (!assignee) return { ok: false, error: "Assignee not found." };
+
+  const now = new Date();
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.lead.updateMany({
+        where: { id: { in: leadIds } },
+        data: { ownerId: assigneeId, assignedById: session.user.id, assignedAt: now },
+      });
+      await tx.leadAssignment.createMany({
+        data: leadIds.map((leadId) => ({
+          leadId,
+          assignedToId: assigneeId,
+          assignedById: session.user.id,
+          note: note?.trim() || null,
+        })),
+      });
+    });
+
+    void (async () => {
+      for (const leadId of leadIds) {
+        void recordActivity({
+          type: "lead.assigned",
+          entity: "Lead",
+          entityId: leadId,
+          userId: session.user.id,
+          meta: { to: assigneeId, toName: assignee.name, bulk: true },
+        });
+      }
+    })();
+
+    // Send a single grouped notification to the assignee.
+    if (assigneeId !== session.user.id) {
+      NotificationService.send({
+        recipientId: assigneeId,
+        type: NotificationTypes.LEAD_ASSIGNED,
+        entityType: "Lead",
+        entityId: leadIds[0]!,
+        payload: {
+          title: `${leadIds.length} new lead${leadIds.length > 1 ? "s" : ""} assigned to you`,
+          body: `You have ${leadIds.length} new lead${leadIds.length > 1 ? "s" : ""} to follow up.`,
+          leadCount: leadIds.length,
+          leadId: leadIds[0]!,
+          courseName: null,
+          leadName: null,
+        },
+      });
+    }
+
+    revalidatePath("/leads");
+    return { ok: true, data: { assigned: leadIds.length } };
+  } catch (err) {
+    console.error("bulkAssignLeads failed", err);
+    return { ok: false, error: "Couldn't assign the leads. Please try again." };
+  }
+}
+
+// Assignment history for a single lead.
+export async function getLeadAssignmentHistory(leadId: string) {
+  await requirePermissionAction("leads.view");
+  return prisma.leadAssignment.findMany({
+    where: { leadId },
+    orderBy: { createdAt: "desc" },
+    include: {
+      assignedTo: { select: { id: true, name: true, email: true } },
+      assignedBy: { select: { id: true, name: true, email: true } },
+    },
+  });
+}
+
+export type LeadAssignmentHistoryRow = Awaited<
+  ReturnType<typeof getLeadAssignmentHistory>
+>[number];
+
+// Unassigned leads inbox for the Sales Manager.
+export async function listUnassignedLeads(options?: { courseId?: string; q?: string }) {
+  await requirePermissionAction("leads.assign");
+
+  const where: Prisma.LeadWhereInput = { ownerId: null };
+  if (options?.courseId) where.courseId = options.courseId;
+  if (options?.q) {
+    const term = options.q.trim();
+    where.OR = [
+      { firstName: { contains: term, mode: "insensitive" } },
+      { lastName: { contains: term, mode: "insensitive" } },
+      { email: { contains: term, mode: "insensitive" } },
+      { phone: { contains: term, mode: "insensitive" } },
+    ];
+  }
+
+  return prisma.lead.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: 200,
+    include: {
+      course: { select: { id: true, name: true } },
+    },
+  });
+}
+
+export type UnassignedLeadRow = Awaited<ReturnType<typeof listUnassignedLeads>>[number];
+
+// Sales manager KPI summary.
+export async function getSalesManagerKpis() {
+  await requirePermissionAction("leads.assign");
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(todayStart.getTime() + 86_400_000 - 1);
+
+  const [
+    totalLeads, unassigned, assigned,
+    followUpsToday, overdueFollowUps, registered,
+  ] = await Promise.all([
+    prisma.lead.count(),
+    prisma.lead.count({ where: { ownerId: null } }),
+    prisma.lead.count({ where: { ownerId: { not: null } } }),
+    prisma.lead.count({ where: { nextActionDue: { gte: todayStart, lte: todayEnd } } }),
+    prisma.lead.count({ where: { nextActionDue: { lt: todayStart }, status: { notIn: ["LOST", "REGISTERED"] } } }),
+    prisma.lead.count({ where: { status: "REGISTERED" } }),
+  ]);
+
+  return { totalLeads, unassigned, assigned, followUpsToday, overdueFollowUps, registered };
+}
+
+export type SalesManagerKpis = Awaited<ReturnType<typeof getSalesManagerKpis>>;

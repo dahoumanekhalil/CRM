@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import {
+  Bell,
   ChevronsUpDown,
   KeyRound,
   LogOut,
@@ -95,6 +96,11 @@ export function UserMenu({ session }: { session: Session | null }) {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setChangePwOpen(true)}>
                 <KeyRound /> Change password
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings/notifications">
+                  <Bell /> Notifications
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/settings">

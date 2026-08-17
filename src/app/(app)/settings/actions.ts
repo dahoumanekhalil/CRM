@@ -7,6 +7,7 @@ import { requirePermissionAction } from "@/lib/auth-guards";
 import { ALL_ROLES, type UserRole } from "@/lib/permissions";
 import { z } from "zod";
 import { CURRENCIES } from "./constants";
+import { clearOrgTimezoneCache } from "@/lib/org";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -47,6 +48,7 @@ export async function updateOrgSettings(input: UpdateOrgInput): Promise<Result<n
       create: { id: "default", ...parsed.data },
       update: parsed.data,
     });
+    clearOrgTimezoneCache();
     revalidatePath("/settings");
     return { ok: true, data: null };
   } catch (err) {

@@ -44,6 +44,7 @@ const OPS_SIDE: readonly UserRole[] = [
   "EMPLOYEE",
 ];
 const FINANCE_SIDE: readonly UserRole[] = ["ADMIN", "MANAGER", "FINANCE"];
+const FINANCE_AND_SALES: readonly UserRole[] = ["ADMIN", "MANAGER", "FINANCE", "SALES"];
 const MARKETING_SIDE: readonly UserRole[] = ["ADMIN", "MANAGER", "MARKETING"];
 const TRAINERS: readonly UserRole[] = ["ADMIN", "MANAGER", "TRAINER"];
 
@@ -54,6 +55,8 @@ export const PERMISSIONS = {
   // Sales / CRM
   "leads.view": SALES_SIDE,
   "leads.write": ["ADMIN", "MANAGER", "SALES", "MARKETING"] as const,
+  // leads.assign — only managers/admins may assign/reassign leads to reps
+  "leads.assign": MANAGERS,
   "students.view": OPS_SIDE,
   "students.write": ["ADMIN", "MANAGER", "SALES"] as const,
 
@@ -74,9 +77,9 @@ export const PERMISSIONS = {
   "campaigns.view": MARKETING_SIDE,
   "campaigns.write": MARKETING_SIDE,
 
-  // Finance
-  "payments.view": FINANCE_SIDE,
-  "payments.write": FINANCE_SIDE,
+  // Finance — SALES can record payments for their own students
+  "payments.view": FINANCE_AND_SALES,
+  "payments.write": FINANCE_AND_SALES,
 
   // Insights
   "reports.view": MANAGERS,
@@ -84,6 +87,16 @@ export const PERMISSIONS = {
   // Tasks — all roles can create and view (scoped by ownership in the query layer)
   "tasks.view": ALL_ROLES,
   "tasks.write": ALL_ROLES,
+
+  // Notification preferences — each employee manages their own
+  "notifications.view": ALL_ROLES,
+  "notifications.write": ALL_ROLES,
+
+  // Telegram administration
+  // telegram.admin — full control: view all, initiate, revoke, analytics
+  // telegram.manage — scoped: view + initiate for non-admin/manager employees only
+  "telegram.admin": ["ADMIN"] as const,
+  "telegram.manage": MANAGERS,
 
   // Settings — Admin only.
   "settings.view": ["ADMIN"] as const,

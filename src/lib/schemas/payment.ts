@@ -11,15 +11,36 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 export const PAYMENT_METHODS = [
   "CASH",
-  "CARD",
   "BANK_TRANSFER",
+  "BANK_CHECK",
+  "POSTAL_MOBILE",
+  "CARD",
   "ONLINE",
   "OTHER",
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
+// Human-readable labels for the payment form UI.
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  CASH: "Cash at Office",
+  BANK_TRANSFER: "Bank Transfer",
+  BANK_CHECK: "Bank Check",
+  POSTAL_MOBILE: "BaridiMob",
+  CARD: "Card",
+  ONLINE: "Online",
+  OTHER: "Other",
+};
+
+// Reference field label per method (shown/hidden in the form).
+export const PAYMENT_METHOD_REFERENCE_LABEL: Partial<Record<PaymentMethod, string>> = {
+  BANK_TRANSFER: "Transaction Reference",
+  BANK_CHECK: "Check Number",
+  POSTAL_MOBILE: "Transaction Reference",
+};
+
 // Same currency list used by courses.
 export const PAYMENT_CURRENCIES = [
+  "DZD",
   "USD",
   "EUR",
   "GBP",
@@ -44,8 +65,8 @@ export const createPaymentSchema = z.object({
   amount: z.coerce
     .number()
     .min(0.01, "Amount must be greater than zero")
-    .max(1_000_000),
-  currency: z.enum(PAYMENT_CURRENCIES).default("USD"),
+    .max(10_000_000),
+  currency: z.enum(PAYMENT_CURRENCIES).default("DZD"),
   method: z.enum(PAYMENT_METHODS).default("CASH"),
   status: z.enum(PAYMENT_STATUSES).default("COMPLETED"),
   reference: z.string().trim().max(120).default(""),

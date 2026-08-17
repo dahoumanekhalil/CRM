@@ -24,9 +24,18 @@ export default async function AttendancePage({
     when: readString(params.when),
   });
 
-  const [rows, courses] = await Promise.all([
+  // Always fetch today's sessions so they're pinned at the top regardless
+  // of what filter the user has selected. When the filter IS "TODAY", rows
+  // already contains today — pass an empty array to avoid duplication.
+  const isViewingToday = parsed.when === "TODAY";
+  const todayInput = listAttendanceSchema.parse({ q: "", courseId: "", when: "TODAY" });
+
+  const [rows, courses, todayRows] = await Promise.all([
     listSessionsForAttendance(parsed),
     listCoursesForAttendanceFilter(),
+    isViewingToday
+      ? Promise.resolve([] as Awaited<ReturnType<typeof listSessionsForAttendance>>)
+      : listSessionsForAttendance(todayInput),
   ]);
 
   return (
@@ -37,7 +46,7 @@ export default async function AttendancePage({
         description="Take attendance for today's sessions, catch up on past ones, or scan what's coming."
       />
       <div className="flex-1 space-y-4 p-6">
-        <AttendanceClient rows={rows} courses={courses} />
+        <AttendanceClient rows={rows} courses={courses} todayRows={todayRows} />
       </div>
     </>
   );

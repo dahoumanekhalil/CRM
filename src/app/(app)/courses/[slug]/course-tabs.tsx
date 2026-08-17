@@ -3,10 +3,12 @@
 import * as React from "react";
 import { parseAsStringLiteral, useQueryState } from "nuqs";
 import {
+  Activity,
   CalendarDays,
   ClipboardList,
   Globe,
   Info,
+  Megaphone,
   Wallet,
 } from "lucide-react";
 
@@ -20,6 +22,8 @@ const TAB_VALUES = [
   "sessions",
   "registrations",
   "payments",
+  "campaigns",
+  "activity",
 ] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
@@ -36,12 +40,16 @@ export function CourseTabsView({
   sessionsSlot,
   registrationsSlot,
   paymentsSlot,
+  campaignsSlot,
+  activitySlot,
 }: {
   detail: CourseDetail;
   landingPagesSlot: React.ReactNode;
   sessionsSlot: React.ReactNode;
   registrationsSlot: React.ReactNode;
   paymentsSlot: React.ReactNode;
+  campaignsSlot: React.ReactNode;
+  activitySlot: React.ReactNode;
 }) {
   const [tab, setTab] = useQueryState("tab", tabParam);
 
@@ -74,6 +82,12 @@ export function CourseTabsView({
         <TabsTrigger value="payments">
           <Wallet /> Payments
         </TabsTrigger>
+        <TabsTrigger value="campaigns">
+          <Megaphone /> Campaigns
+        </TabsTrigger>
+        <TabsTrigger value="activity">
+          <Activity /> Activity
+        </TabsTrigger>
       </TabsList>
       </div>
 
@@ -88,6 +102,10 @@ export function CourseTabsView({
       <TabsContent value="registrations">{registrationsSlot}</TabsContent>
 
       <TabsContent value="payments">{paymentsSlot}</TabsContent>
+
+      <TabsContent value="campaigns">{campaignsSlot}</TabsContent>
+
+      <TabsContent value="activity">{activitySlot}</TabsContent>
     </Tabs>
   );
 }

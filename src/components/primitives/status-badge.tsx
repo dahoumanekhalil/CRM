@@ -64,6 +64,13 @@ export const statusTone: Record<string, StatusTone> = {
   // Campaigns
   ACTIVE: "success",
   PAUSED: "warning",
+
+  // Telegram connection
+  CONNECTED: "success",
+  DISABLED: "neutral",
+  REVOKED: "neutral",
+  BLOCKED: "danger",
+  ERROR: "danger",
 };
 
 interface StatusBadgeProps {

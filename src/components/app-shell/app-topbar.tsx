@@ -8,13 +8,19 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Kbd } from "@/components/primitives/kbd";
 import { ThemeToggle } from "./theme-toggle";
 import { DirectionToggle } from "./direction-toggle";
+import { NotificationBell } from "./notification-bell";
 
 interface AppTopbarProps {
   onOpenCommand: () => void;
   onOpenQuickCreate?: () => void;
+  initialUnreadCount?: number;
 }
 
-export function AppTopbar({ onOpenCommand, onOpenQuickCreate }: AppTopbarProps) {
+export function AppTopbar({
+  onOpenCommand,
+  onOpenQuickCreate,
+  initialUnreadCount = 0,
+}: AppTopbarProps) {
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border/70 bg-background/80 px-3 backdrop-blur-md md:px-4">
       <SidebarTrigger className="-ms-1" />
@@ -44,6 +50,7 @@ export function AppTopbar({ onOpenCommand, onOpenQuickCreate }: AppTopbarProps) 
             C
           </Kbd>
         </Button>
+        <NotificationBell initialUnreadCount={initialUnreadCount} />
         <DirectionToggle />
         <ThemeToggle />
       </div>

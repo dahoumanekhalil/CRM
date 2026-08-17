@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import {
   CalendarDays,
+  CalendarCheck2,
   ClipboardCheck,
   Loader2,
   UserRound,
@@ -92,6 +93,7 @@ export function TakeAttendanceDialog({
   const [selectedDate, setSelectedDate] = React.useState<string>("");
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>({});
   const [pending, startTransition] = React.useTransition();
+  const [savedSummary, setSavedSummary] = React.useState<Record<AttendanceStatus, number> | null>(null);
 
   // One effect handles both first load and day-change reloads. selectedDate
   // starts empty; we probe with today/initialDate, refine to the right day
@@ -135,6 +137,7 @@ export function TakeAttendanceDialog({
     setSelectedDate("");
     setDrafts({});
     setLoading(false);
+    setSavedSummary(null);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [open]);
 
@@ -221,10 +224,7 @@ export function TakeAttendanceDialog({
         toast.error(res.error);
         return;
       }
-      toast.success(
-        `Attendance saved · ${summary.PRESENT + summary.LATE}/${entries.length} attended`
-      );
-      onOpenChange(false);
+      setSavedSummary({ ...summary });
       router.refresh();
     });
   };
@@ -245,6 +245,41 @@ export function TakeAttendanceDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {/* ── Post-submission summary ── */}
+        {savedSummary ? (
+          <div className="space-y-4 py-2">
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-border/60 bg-muted/20 py-8 text-center">
+              <span className="grid size-12 place-items-center rounded-full bg-success/10 text-success">
+                <CalendarCheck2 className="size-6" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Attendance saved</p>
+                <p className="text-xs text-muted-foreground">
+                  {roster?.session.courseName}
+                  {roster?.session.title ? ` · ${roster.session.title}` : ""}
+                  {selectedDate ? ` — ${format(new Date(`${selectedDate}T00:00`), "EEE, MMM d")}` : ""}
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-3 pt-1">
+                {ATTENDANCE_STATUSES.map((s) => (
+                  <div key={s} className="flex flex-col items-center gap-1">
+                    <span
+                      className={cn(
+                        "grid size-10 place-items-center rounded-lg text-base font-bold",
+                        STATUS_TONE[s]
+                      )}
+                    >
+                      {savedSummary[s]}
+                    </span>
+                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                      {STATUS_LABEL[s]}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
         <div className="space-y-4">
           {/* Date picker (only for multi-day sessions) */}
           {roster && roster.session.days.length > 1 ? (
@@ -398,24 +433,31 @@ export function TakeAttendanceDialog({
             )}
           </div>
         </div>
+        )} {/* end !savedSummary */}
 
         <DialogFooter>
-          <Button
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            disabled={pending}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={onSubmit}
-            disabled={
-              pending || loading || !roster || roster.entries.length === 0
-            }
-          >
-            {pending ? <Loader2 className="animate-spin" /> : null}
-            Save attendance
-          </Button>
+          {savedSummary ? (
+            <Button onClick={() => onOpenChange(false)}>Done</Button>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                onClick={() => onOpenChange(false)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={onSubmit}
+                disabled={
+                  pending || loading || !roster || roster.entries.length === 0
+                }
+              >
+                {pending ? <Loader2 className="animate-spin" /> : null}
+                Save attendance
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

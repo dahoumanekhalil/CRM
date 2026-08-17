@@ -1,23 +1,31 @@
 import Link from "next/link";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { BookOpen, Calendar, Mail, Megaphone, Phone, User } from "lucide-react";
-import type { LeadDetail } from "../actions";
+import type { LeadDetail, SalesTeamMember, LeadAssignmentHistoryRow } from "../actions";
 import { NextActionSection } from "./next-action-section";
 import { QuickActionsRow } from "./quick-actions-row";
+import { AssignLeadDialog } from "./assign-lead-dialog";
 
 type UserPickerItem = { id: string; name: string | null; email: string };
 
 export function OverviewTab({
   lead,
   users,
+  salesTeam = [],
+  canAssign = false,
+  assignmentHistory = [],
 }: {
   lead: LeadDetail;
   users: UserPickerItem[];
+  salesTeam?: SalesTeamMember[];
+  canAssign?: boolean;
+  assignmentHistory?: LeadAssignmentHistoryRow[];
 }) {
   const facts: Array<{
     label: string;
     value: React.ReactNode;
     icon: typeof Mail;
+    action?: React.ReactNode;
   }> = [
     { label: "Email", value: lead.email ?? "—", icon: Mail },
     { label: "Phone", value: lead.phone ?? "—", icon: Phone },
@@ -40,6 +48,13 @@ export function OverviewTab({
       label: "Assigned to",
       value: lead.owner?.name ?? lead.owner?.email ?? "Unassigned",
       icon: User,
+      action: canAssign ? (
+        <AssignLeadDialog
+          leadId={lead.id}
+          currentOwnerId={lead.owner?.id ?? null}
+          salesTeam={salesTeam}
+        />
+      ) : null,
     },
     {
       label: "Added",
@@ -104,6 +119,37 @@ export function OverviewTab({
       </div>
 
       <aside className="space-y-4">
+        {/* Assignment history — visible to managers */}
+        {canAssign && assignmentHistory.length > 0 ? (
+          <section className="rounded-xl border border-border/60 bg-card">
+            <header className="border-b border-border/60 px-5 py-3">
+              <h2 className="text-sm font-semibold tracking-tight">
+                Assignment history
+              </h2>
+            </header>
+            <ol className="divide-y divide-border/60">
+              {assignmentHistory.map((h) => (
+                <li key={h.id} className="px-5 py-3 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-foreground/90">
+                      {h.assignedTo?.name ?? h.assignedTo?.email ?? "Unassigned"}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">
+                      {format(h.createdAt, "MMM d")}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-muted-foreground">
+                    by {h.assignedBy.name ?? h.assignedBy.email}
+                    {h.note ? (
+                      <span className="mt-0.5 block italic">{h.note}</span>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ) : null}
+
         <section className="rounded-xl border border-border/60 bg-card">
           <header className="border-b border-border/60 px-5 py-3">
             <h2 className="text-sm font-semibold tracking-tight">Details</h2>
@@ -118,8 +164,11 @@ export function OverviewTab({
                   <f.icon className="size-3.5" />
                   {f.label}
                 </dt>
-                <dd className="max-w-[60%] truncate text-end text-sm font-medium">
-                  {f.value}
+                <dd className="flex max-w-[60%] flex-col items-end gap-1">
+                  <span className="truncate text-end text-sm font-medium">
+                    {f.value}
+                  </span>
+                  {f.action ?? null}
                 </dd>
               </div>
             ))}

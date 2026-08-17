@@ -7,6 +7,7 @@ import {
   createCommunicationSchema,
   type CreateCommunicationInput,
 } from "@/lib/schemas/communication";
+import { recordActivity } from "@/lib/activity";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -52,6 +53,35 @@ export async function createCommunication(
 
     if (d.leadId) revalidatePath(`/leads/${d.leadId}`);
     if (d.studentId) revalidatePath(`/students/${d.studentId}`);
+
+    if (d.leadId) {
+      void recordActivity({
+        type: "communication.logged",
+        entity: "Lead",
+        entityId: d.leadId,
+        userId: session.user.id,
+        meta: {
+          communicationType: d.type,
+          direction: d.direction,
+          subject: d.subject?.trim() || null,
+          snippet: d.body?.slice(0, 120) || null,
+        },
+      });
+    }
+    if (d.studentId) {
+      void recordActivity({
+        type: "communication.logged",
+        entity: "Student",
+        entityId: d.studentId,
+        userId: session.user.id,
+        meta: {
+          communicationType: d.type,
+          direction: d.direction,
+          subject: d.subject?.trim() || null,
+          snippet: d.body?.slice(0, 120) || null,
+        },
+      });
+    }
 
     return { ok: true, data: { id: row.id } };
   } catch (err) {

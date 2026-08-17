@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { recordActivity } from "@/lib/activity";
 import {
   createStudentSchema,
   listStudentsSchema,
@@ -233,6 +234,7 @@ export async function getStudentDetail(id: string) {
           communications: true,
         },
       },
+      nextActionOwner: { select: { id: true, name: true, email: true } },
     },
   });
   if (!student) return null;
@@ -242,6 +244,62 @@ export async function getStudentDetail(id: string) {
 export type StudentDetail = NonNullable<
   Awaited<ReturnType<typeof getStudentDetail>>
 >;
+
+export async function updateStudentNextAction(
+  id: string,
+  data: {
+    nextAction: string;
+    nextActionDue: string | null;
+    nextActionOwnerId: string | null;
+  }
+): Promise<Result<null>> {
+  const session = await requireSession();
+  try {
+    await prisma.student.update({
+      where: { id },
+      data: {
+        nextAction: data.nextAction.trim(),
+        nextActionDue: data.nextActionDue ? new Date(data.nextActionDue) : null,
+        nextActionOwnerId: data.nextActionOwnerId || null,
+      },
+      select: { id: true },
+    });
+    void recordActivity({
+      type: "lead.next_action_set",
+      entity: "Student",
+      entityId: id,
+      userId: session.user.id,
+      meta: { action: data.nextAction },
+    });
+    revalidatePath(`/students/${id}`);
+    return { ok: true, data: null };
+  } catch (err) {
+    console.error("updateStudentNextAction failed", err);
+    return { ok: false, error: "Couldn't save. Please try again." };
+  }
+}
+
+export async function clearStudentNextAction(id: string): Promise<Result<null>> {
+  const session = await requireSession();
+  try {
+    await prisma.student.update({
+      where: { id },
+      data: { nextAction: null, nextActionDue: null, nextActionOwnerId: null },
+      select: { id: true },
+    });
+    void recordActivity({
+      type: "lead.next_action_completed",
+      entity: "Student",
+      entityId: id,
+      userId: session.user.id,
+    });
+    revalidatePath(`/students/${id}`);
+    return { ok: true, data: null };
+  } catch (err) {
+    console.error("clearStudentNextAction failed", err);
+    return { ok: false, error: "Couldn't clear. Please try again." };
+  }
+}
 
 // Cheap picker — used by the register-student dialog in Task 10.
 export async function listStudentsForPicker(term: string) {

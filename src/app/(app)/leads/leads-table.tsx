@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { MoreHorizontal, Mail, Phone, Contact, Clock, Star } from "lucide-react";
+import { MoreHorizontal, Mail, Phone, Contact, Clock, Star, Eye } from "lucide-react";
 import { isPast, isToday, parseISO } from "date-fns";
 import { useRouter } from "next/navigation";
 import { useQueryStates } from "nuqs";
@@ -47,12 +47,14 @@ export function LeadsTable({
   rows,
   total,
   onNewLead,
+  onQuickView,
   rowSelection,
   onRowSelectionChange,
 }: {
   rows: LeadRow[];
   total: number;
   onNewLead: () => void;
+  onQuickView?: (row: LeadRow) => void;
   rowSelection: Record<string, boolean>;
   onRowSelectionChange: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
 }) {
@@ -277,9 +279,15 @@ export function LeadsTable({
                   <span className="sr-only">Open menu</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuContent align="end" className="w-44">
                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {onQuickView ? (
+                  <DropdownMenuItem onSelect={() => onQuickView(row.original)}>
+                    <Eye className="size-3.5" />
+                    Quick view
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem asChild>
                   <Link href={`/leads/${row.original.id}`}>Open</Link>
                 </DropdownMenuItem>
@@ -298,7 +306,7 @@ export function LeadsTable({
         ),
       },
     ],
-    [filters.sortBy, filters.sortDir] // eslint-disable-line react-hooks/exhaustive-deps
+    [filters.sortBy, filters.sortDir, onQuickView] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const emptyState =

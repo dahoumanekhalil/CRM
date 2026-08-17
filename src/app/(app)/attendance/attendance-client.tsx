@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useQueryStates } from "nuqs";
 import { format } from "date-fns";
-import { CalendarDays, ClipboardCheck, MapPin, X } from "lucide-react";
+import { CalendarCheck2, CalendarDays, ClipboardCheck, MapPin, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/primitives/search-input";
@@ -45,23 +45,40 @@ const GROUP_LABEL: Record<(typeof GROUP_ORDER)[number], string> = {
 export function AttendanceClient({
   rows,
   courses,
+  todayRows,
 }: {
   rows: AttendanceListRow[];
   courses: AttendanceCoursePickerItem[];
+  todayRows: AttendanceListRow[];
 }) {
   const [filters, setFilters] = useQueryStates(attendanceFilters);
-  const [takingFor, setTakingFor] = React.useState<AttendanceListRow | null>(
-    null
-  );
+  const [takingFor, setTakingFor] = React.useState<AttendanceListRow | null>(null);
 
   const hasActiveFilters =
     filters.q !== "" || filters.courseId !== "" || filters.when !== "ALL";
 
-  // Group by priority for the "smart order" view.
+  // Deduplicate: don't show today's sessions twice in the filtered list.
+  const todayIds = React.useMemo(
+    () => new Set(todayRows.map((r) => r.id)),
+    [todayRows]
+  );
+  const filteredRows = React.useMemo(
+    () => rows.filter((r) => !todayIds.has(r.id)),
+    [rows, todayIds]
+  );
+
+  // Group filtered rows by priority.
   const groups: Partial<Record<(typeof GROUP_ORDER)[number], AttendanceListRow[]>> = {};
-  for (const r of rows) {
+  for (const r of filteredRows) {
     (groups[r.priority] = groups[r.priority] ?? []).push(r);
   }
+
+  // Show "today pinned" section only when the filter is NOT already "TODAY"
+  // (to avoid the header appearing twice). todayRows is always empty when
+  // the filter IS "TODAY" (page.tsx skips the second fetch), but guard anyway.
+  const showPinnedToday = todayRows.length > 0 && filters.when !== "TODAY";
+
+  const totalVisible = todayRows.length + filteredRows.length;
 
   return (
     <div className="space-y-4">
@@ -98,9 +115,7 @@ export function AttendanceClient({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() =>
-                setFilters({ q: "", courseId: "", when: "ALL" })
-              }
+              onClick={() => setFilters({ q: "", courseId: "", when: "ALL" })}
               className="text-muted-foreground hover:text-foreground"
             >
               <X className="size-3.5" /> Clear
@@ -131,12 +146,14 @@ export function AttendanceClient({
         })}
       </div>
 
-      {/* Rows */}
-      {rows.length === 0 ? (
+      {/* Empty state */}
+      {totalVisible === 0 ? (
         <EmptyState
           icon={ClipboardCheck}
           title={
-            hasActiveFilters ? "No sessions match your filters" : "Nothing to take attendance for"
+            hasActiveFilters
+              ? "No sessions match your filters"
+              : "Nothing to take attendance for"
           }
           description={
             hasActiveFilters
@@ -147,9 +164,7 @@ export function AttendanceClient({
             hasActiveFilters ? (
               <Button
                 variant="outline"
-                onClick={() =>
-                  setFilters({ q: "", courseId: "", when: "ALL" })
-                }
+                onClick={() => setFilters({ q: "", courseId: "", when: "ALL" })}
               >
                 Clear filters
               </Button>
@@ -162,29 +177,58 @@ export function AttendanceClient({
         />
       ) : (
         <div className="space-y-6">
-          {GROUP_ORDER.map((key) => {
-            const items = groups[key];
-            if (!items || items.length === 0) return null;
-            return (
-              <section key={key} className="space-y-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {GROUP_LABEL[key]}{" "}
-                  <span className="ms-1 tabular-nums opacity-70">
-                    {items.length}
-                  </span>
+          {/* ── Today's sessions — always at the top ── */}
+          {showPinnedToday ? (
+            <section className="space-y-2">
+              <div className="flex items-center gap-2">
+                <CalendarCheck2 className="size-4 text-primary" />
+                <h2 className="text-sm font-semibold text-foreground">
+                  Today
                 </h2>
-                <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/60 bg-card">
-                  {items.map((s) => (
-                    <SessionRow
-                      key={s.id}
-                      row={s}
-                      onTakeAttendance={() => setTakingFor(s)}
-                    />
-                  ))}
-                </ul>
-              </section>
-            );
-          })}
+                <span className="ms-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/10 px-1 text-[10px] font-medium text-primary">
+                  {todayRows.length}
+                </span>
+              </div>
+              <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/60 bg-card ring-1 ring-primary/10">
+                {todayRows.map((s) => (
+                  <SessionRow
+                    key={s.id}
+                    row={s}
+                    onTakeAttendance={() => setTakingFor(s)}
+                  />
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          {/* ── Filtered results (today entries already shown above) ── */}
+          {filteredRows.length > 0 ? (
+            <div className="space-y-6">
+              {GROUP_ORDER.map((key) => {
+                const items = groups[key];
+                if (!items || items.length === 0) return null;
+                return (
+                  <section key={key} className="space-y-2">
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {GROUP_LABEL[key]}{" "}
+                      <span className="ms-1 tabular-nums opacity-70">
+                        {items.length}
+                      </span>
+                    </h2>
+                    <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/60 bg-card">
+                      {items.map((s) => (
+                        <SessionRow
+                          key={s.id}
+                          row={s}
+                          onTakeAttendance={() => setTakingFor(s)}
+                        />
+                      ))}
+                    </ul>
+                  </section>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -237,9 +281,7 @@ function SessionRow({
             <span className="tabular-nums">{dateLabel}</span>
             {where ? (
               <>
-                <span aria-hidden className="opacity-40">
-                  ·
-                </span>
+                <span aria-hidden className="opacity-40">·</span>
                 <span className="inline-flex items-center gap-1">
                   <MapPin className="size-3" /> {where}
                 </span>

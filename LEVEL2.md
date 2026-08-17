@@ -105,7 +105,7 @@ Lead management must be action-oriented. No lead should be silently forgotten.
 ---
 
 ### A4 · Activity Timeline Upgrade
-**Status:** [ ] Todo
+**Status:** [x] Done (shipped 2026-08-15)
 
 **Before starting:** Read `DESIGN.md` §9, §30, §35.
 
@@ -138,7 +138,7 @@ The existing `ActivityTimeline` must become a unified history system, not a deco
 ---
 
 ### A5 · Global Quick Create (polish existing)
-**Status:** [ ] Done (c shortcut + QuickCreateMenu shipped 2026-08-14)
+**Status:** [x] Done (shipped 2026-08-15)
 
 The `c` shortcut and `QuickCreateMenu` are already implemented. Verify:
 - [ ] All create commands in registry use correct permissions
@@ -148,7 +148,7 @@ The `c` shortcut and `QuickCreateMenu` are already implemented. Verify:
 ---
 
 ### A6 · Command Menu Upgrade
-**Status:** [ ] Partially done (shipped 2026-08-12, needs Task search)
+**Status:** [x] Done (shipped 2026-08-15)
 
 **Before starting:** Read `DESIGN.md` §31, §32, §35.
 
@@ -166,7 +166,7 @@ Everything else (debounced entity search, recents, permission-aware filtering) a
 ---
 
 ### A7 · Global Search Upgrade
-**Status:** [ ] Todo
+**Status:** [x] Done (shipped 2026-08-15)
 
 **Before starting:** Read `DESIGN.md` §31, §35.
 

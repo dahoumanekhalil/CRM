@@ -7,6 +7,8 @@ import { LandingPagesTab } from "./landing-pages-tab";
 import { SessionsTab } from "./sessions-tab";
 import { RegistrationsTab } from "./registrations-tab";
 import { PaymentsTab } from "./payments-tab";
+import { CourseCampaignsTab } from "./campaigns-tab";
+import { CourseActivityTab } from "./activity-tab";
 
 type Params = Promise<{ slug: string }>;
 
@@ -51,8 +53,16 @@ export default async function CourseDetailPage({
               courseName={data.course.name}
             />
           }
-          registrationsSlot={<RegistrationsTab courseId={data.course.id} />}
+          registrationsSlot={
+            <RegistrationsTab
+              courseId={data.course.id}
+              activeRegistrations={data.activeRegistrations}
+              totalCapacity={data.totalCapacity}
+            />
+          }
           paymentsSlot={<PaymentsTab courseId={data.course.id} />}
+          campaignsSlot={<CourseCampaignsTab courseId={data.course.id} />}
+          activitySlot={<CourseActivityTab courseId={data.course.id} />}
         />
       </div>
     </>

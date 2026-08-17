@@ -14,6 +14,7 @@ import {
   Receipt,
   BarChart3,
   Settings,
+  Bot,
   type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/lib/permissions";
@@ -175,12 +176,33 @@ export const navGroups: NavGroup[] = [
         permission: "reports.view",
         built: true,
       },
+    ],
+  },
+  {
+    label: "Settings",
+    items: [
       {
         label: "Settings",
         href: "/settings",
         icon: Settings,
         matchPrefix: true,
         permission: "settings.view",
+        built: true,
+      },
+      {
+        label: "Telegram Management",
+        href: "/settings/telegram",
+        icon: Bot,
+        matchPrefix: true,
+        permission: "telegram.admin",
+        built: true,
+      },
+      {
+        label: "Telegram Analytics",
+        href: "/settings/telegram/analytics",
+        icon: BarChart3,
+        matchPrefix: true,
+        permission: "telegram.admin",
         built: true,
       },
     ],
