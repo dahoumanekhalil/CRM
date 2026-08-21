@@ -16,12 +16,17 @@ import { getOrgTimezone } from "@/lib/org";
 // Types with no entry (task.*, daily.digest) are granted to ALL_ROLES — no check needed.
 
 const NOTIF_PERMISSION_MAP: Partial<Record<string, Permission>> = {
-  "session.reminder":     "sessions.view",
-  "session.nearCapacity": "sessions.view",
-  "payment.pending":      "payments.view",
-  "lead.assigned":        "leads.view",
-  "lead.followup":        "leads.view",
-  "course.update":        "courses.view",
+  "session.reminder":       "sessions.view",
+  "session.today":          "sessions.view",
+  "session.nearCapacity":   "sessions.view",
+  "payment.pending":        "payments.view",
+  "payment.recorded":       "payments.view",
+  "lead.assigned":          "leads.view",
+  "lead.followup":          "leads.view",
+  "lead.unassignedAlert":   "sales.view",
+  "team.overdueAlert":      "sales.view",
+  "balance.outstanding":    "finance.view",
+  "course.update":          "courses.view",
 };
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -315,6 +320,194 @@ async function discoverDailyDigest(): Promise<number> {
   return enqueued;
 }
 
+// Morning alert for trainers — "You have N sessions today".
+async function discoverSessionToday(): Promise<number> {
+  const timezone = await getOrgTimezone();
+  const nowInTz = new TZDate(new Date(), timezone);
+  const today = format(nowInTz, "yyyy-MM-dd");
+  const syntheticId = `session.today:${today}`;
+
+  const dayStart = new TZDate(nowInTz.getFullYear(), nowInTz.getMonth(), nowInTz.getDate(), 0, 0, 0, 0, timezone);
+  const dayEnd   = new TZDate(nowInTz.getFullYear(), nowInTz.getMonth(), nowInTz.getDate(), 23, 59, 59, 999, timezone);
+
+  const sessions = await prisma.courseSession.findMany({
+    where: {
+      startDate: { gte: dayStart, lte: dayEnd },
+      status: { in: ["UPCOMING", "OPEN", "FULL", "IN_PROGRESS"] },
+      instructor: { userId: { not: null } },
+    },
+    select: {
+      id: true,
+      startDate: true,
+      location: true,
+      course: { select: { name: true, slug: true } },
+      instructor: { select: { userId: true } },
+      _count: { select: { registrations: { where: { status: { in: ["CONFIRMED", "ATTENDING"] } } } } },
+    },
+  });
+
+  // Group by instructor so each trainer gets one grouped message.
+  const byInstructor = new Map<string, typeof sessions>();
+  for (const s of sessions) {
+    const uid = s.instructor?.userId;
+    if (!uid) continue;
+    if (!byInstructor.has(uid)) byInstructor.set(uid, []);
+    byInstructor.get(uid)!.push(s);
+  }
+
+  let enqueued = 0;
+  for (const [recipientId, trainerSessions] of byInstructor) {
+    const count = trainerSessions.length;
+    const first = trainerSessions[0];
+    const ok = await enqueue(
+      "session.today",
+      recipientId,
+      {
+        title: `You have ${count} session${count !== 1 ? "s" : ""} today`,
+        body: first ? first.course.name : "",
+        count,
+        sessions: trainerSessions.map((s) => ({
+          courseName: s.course.name,
+          location: s.location ?? "",
+          registered: s._count.registrations,
+        })),
+      },
+      { entityType: "System", entityId: syntheticId },
+    );
+    if (ok) enqueued++;
+  }
+  return enqueued;
+}
+
+// Alert managers when there are unassigned leads waiting for distribution.
+async function discoverUnassignedLeadsAlert(): Promise<number> {
+  const timezone = await getOrgTimezone();
+  const today = format(new TZDate(new Date(), timezone), "yyyy-MM-dd");
+  const syntheticId = `lead.unassigned:${today}`;
+
+  const count = await prisma.lead.count({
+    where: {
+      ownerId: null,
+      status: { notIn: ["LOST", "REGISTERED"] },
+    },
+  });
+  if (count === 0) return 0;
+
+  const managers = await prisma.user.findMany({
+    where: { role: { in: ["ADMIN", "MANAGER"] } },
+    select: { id: true },
+  });
+
+  let enqueued = 0;
+  for (const u of managers) {
+    const ok = await enqueue(
+      "lead.unassignedAlert",
+      u.id,
+      {
+        title: "Unassigned leads waiting",
+        body: `${count} lead${count !== 1 ? "s" : ""} have no assigned Sales Rep.`,
+        count,
+      },
+      { entityType: "System", entityId: syntheticId },
+    );
+    if (ok) enqueued++;
+  }
+  return enqueued;
+}
+
+// Alert managers when a Sales Rep has many overdue leads.
+async function discoverTeamOverdueAlert(): Promise<number> {
+  const timezone = await getOrgTimezone();
+  const today = format(new TZDate(new Date(), timezone), "yyyy-MM-dd");
+  const syntheticId = `team.overdue:${today}`;
+  const THRESHOLD = 5;
+
+  const allGroups = await prisma.lead.groupBy({
+    by: ["ownerId"],
+    where: {
+      ownerId: { not: null },
+      nextActionDue: { lt: new Date() },
+      status: { notIn: ["LOST", "REGISTERED"] },
+    },
+    _count: { _all: true },
+  });
+  const groups = allGroups.filter((g) => g._count._all >= THRESHOLD);
+  if (groups.length === 0) return 0;
+
+  const repIds = groups.map((g) => g.ownerId!);
+  const reps = await prisma.user.findMany({
+    where: { id: { in: repIds } },
+    select: { id: true, name: true },
+  });
+  const repNames = new Map(reps.map((r) => [r.id, r.name ?? r.id]));
+
+  const managers = await prisma.user.findMany({
+    where: { role: { in: ["ADMIN", "MANAGER"] } },
+    select: { id: true },
+  });
+
+  let enqueued = 0;
+  for (const u of managers) {
+    const lines = groups.map((g) => `${repNames.get(g.ownerId!) ?? "Rep"}: ${g._count._all} overdue`);
+    const ok = await enqueue(
+      "team.overdueAlert",
+      u.id,
+      {
+        title: "Team overdue leads alert",
+        body: lines.join(", "),
+        reps: groups.map((g) => ({ name: repNames.get(g.ownerId!), count: g._count._all })),
+      },
+      { entityType: "System", entityId: syntheticId },
+    );
+    if (ok) enqueued++;
+  }
+  return enqueued;
+}
+
+// Daily outstanding balance summary for Finance users.
+async function discoverOutstandingBalance(): Promise<number> {
+  const timezone = await getOrgTimezone();
+  const today = format(new TZDate(new Date(), timezone), "yyyy-MM-dd");
+  const syntheticId = `balance.outstanding:${today}`;
+
+  const [pendingCount, pendingAgg] = await Promise.all([
+    prisma.payment.count({ where: { status: "PENDING" } }),
+    prisma.payment.groupBy({
+      by: ["currency"],
+      where: { status: "PENDING" },
+      _sum: { amount: true },
+    }),
+  ]);
+  if (pendingCount === 0) return 0;
+
+  const byCurrency = pendingAgg.map((r) => ({
+    currency: r.currency,
+    total: Number(r._sum.amount ?? 0),
+  }));
+
+  const financeUsers = await prisma.user.findMany({
+    where: { role: { in: ["ADMIN", "MANAGER", "FINANCE"] } },
+    select: { id: true },
+  });
+
+  let enqueued = 0;
+  for (const u of financeUsers) {
+    const ok = await enqueue(
+      "balance.outstanding",
+      u.id,
+      {
+        title: "Outstanding balance summary",
+        body: `${pendingCount} pending payment${pendingCount !== 1 ? "s" : ""} awaiting confirmation.`,
+        pendingCount,
+        byCurrency,
+      },
+      { entityType: "System", entityId: syntheticId },
+    );
+    if (ok) enqueued++;
+  }
+  return enqueued;
+}
+
 // ── Stale processing recovery ─────────────────────────────────────────────────
 // If the cron crashed mid-batch, records may be stuck in PROCESSING.
 // Reset them to PENDING so they are retried next run.
@@ -449,15 +642,28 @@ export async function POST(req: NextRequest) {
     // 1. Recover records stuck in PROCESSING from a previous crashed run.
     const recovered = await recoverStaleProcessing();
 
-    // 2. Discover and enqueue new notifications (C5 handlers).
-    const [taskReminders, overdueTasks, sessionReminders, paymentAlerts, dailyDigest] =
-      await Promise.all([
-        discoverTaskReminders(),
-        discoverOverdueTasks(),
-        discoverSessionReminders(),
-        discoverPaymentAlerts(),
-        discoverDailyDigest(),
-      ]);
+    // 2. Discover and enqueue new notifications.
+    const [
+      taskReminders,
+      overdueTasks,
+      sessionReminders,
+      sessionToday,
+      paymentAlerts,
+      dailyDigest,
+      unassignedLeads,
+      teamOverdue,
+      outstandingBalance,
+    ] = await Promise.all([
+      discoverTaskReminders(),
+      discoverOverdueTasks(),
+      discoverSessionReminders(),
+      discoverSessionToday(),
+      discoverPaymentAlerts(),
+      discoverDailyDigest(),
+      discoverUnassignedLeadsAlert(),
+      discoverTeamOverdueAlert(),
+      discoverOutstandingBalance(),
+    ]);
 
     // 3. Process the queue (up to 50 due items).
     const queue = await processQueue();
@@ -465,7 +671,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       recovered,
-      enqueued: { taskReminders, overdueTasks, sessionReminders, paymentAlerts, dailyDigest },
+      enqueued: { taskReminders, overdueTasks, sessionReminders, sessionToday, paymentAlerts, dailyDigest, unassignedLeads, teamOverdue, outstandingBalance },
       queue,
     });
   } catch (err) {

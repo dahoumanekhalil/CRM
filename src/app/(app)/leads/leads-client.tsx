@@ -40,6 +40,7 @@ export function LeadsClient({
   const selectedIds = Object.entries(rowSelection)
     .filter(([, v]) => v)
     .map(([id]) => id);
+  const selectedLeads = rows.filter((r) => rowSelection[r.id]);
 
   const [drawerLead, setDrawerLead] = React.useState<LeadRow | null>(null);
 
@@ -54,6 +55,7 @@ export function LeadsClient({
       {selectedIds.length > 0 ? (
         <BulkActionBar
           selectedIds={selectedIds}
+          selectedLeads={selectedLeads}
           onClear={() => setRowSelection({})}
           salesTeam={canAssign ? salesTeam : []}
           canAssign={canAssign}

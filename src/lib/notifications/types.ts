@@ -6,9 +6,14 @@ export const NotificationTypes = {
   TASK_OVERDUE: "task.overdue",
   SESSION_NEAR_CAPACITY: "session.nearCapacity",
   SESSION_REMINDER: "session.reminder",
+  SESSION_TODAY: "session.today",
   COURSE_UPDATE: "course.update",
   PAYMENT_PENDING: "payment.pending",
+  PAYMENT_RECORDED: "payment.recorded",
   LEAD_ASSIGNED: "lead.assigned",
+  LEAD_UNASSIGNED_ALERT: "lead.unassignedAlert",
+  TEAM_OVERDUE_ALERT: "team.overdueAlert",
+  BALANCE_OUTSTANDING: "balance.outstanding",
   DAILY_DIGEST: "daily.digest",
 } as const;
 

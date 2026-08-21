@@ -85,6 +85,8 @@ const formPropsSchema = z.object({
   successHeading: optStr(160),
   successMessage: optStr(400),
   privacyNote: optStr(300),
+  // ID of a Form record in the forms library. formDefinition is runtime-only.
+  formId: optStr(36),
 });
 
 const testimonialsPropsSchema = z.object({

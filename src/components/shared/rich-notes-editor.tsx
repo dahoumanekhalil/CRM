@@ -213,7 +213,7 @@ export function RichNotesEditor({
           [&_.tiptap_hr]:my-4 [&_.tiptap_hr]:border-border/60
           [&_.tiptap_strong]:font-semibold
           [&_.tiptap_em]:italic
-          [&_.tiptap_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.tiptap_p.is-editor-empty:first-child::before]:text-muted-foreground/50 [&_.tiptap_p.is-editor-empty:first-child::before]:pointer-events-none [&_.tiptap_p.is-editor-empty:first-child::before]:float-left [&_.tiptap_p.is-editor-empty:first-child::before]:h-0"
+          [&_.tiptap_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.tiptap_p.is-editor-empty:first-child::before]:text-muted-foreground/50 [&_.tiptap_p.is-editor-empty:first-child::before]:pointer-events-none [&_.tiptap_p.is-editor-empty:first-child::before]:float-start [&_.tiptap_p.is-editor-empty:first-child::before]:h-0"
       />
     </div>
   );

@@ -153,9 +153,10 @@ export async function getSalesFunnel() {
 
   const [
     newLeads,
+    assigned,
     contacted,
     interested,
-    followUp,
+    legacyFollowUp,
     confirmed,
     registered,
     lost,
@@ -163,7 +164,9 @@ export async function getSalesFunnel() {
     unreachable,
   ] = await Promise.all([
     prisma.lead.count({ where: { status: "NEW" } }),
+    prisma.lead.count({ where: { status: "ASSIGNED" } }),
     prisma.lead.count({ where: { status: "CONTACTED" } }),
+    // Merge legacy FOLLOW_UP into Interested count so migration residue surfaces correctly
     prisma.lead.count({ where: { status: "INTERESTED" } }),
     prisma.lead.count({ where: { status: "FOLLOW_UP" } }),
     prisma.lead.count({ where: { status: "CONFIRMED" } }),
@@ -173,15 +176,16 @@ export async function getSalesFunnel() {
     prisma.lead.count({ where: { status: "UNREACHABLE" } }),
   ]);
 
-  const total = newLeads + contacted + interested + followUp + confirmed + registered;
+  const interestedTotal = interested + legacyFollowUp;
+  const total = newLeads + assigned + contacted + interestedTotal + confirmed + registered;
   const conversionRate = total > 0 ? Math.round((registered / total) * 100) : 0;
 
   return {
     stages: [
       { key: "NEW", label: "New", count: newLeads },
+      { key: "ASSIGNED", label: "Assigned", count: assigned },
       { key: "CONTACTED", label: "Contacted", count: contacted },
-      { key: "INTERESTED", label: "Interested", count: interested },
-      { key: "FOLLOW_UP", label: "Follow-up", count: followUp },
+      { key: "INTERESTED", label: "Interested", count: interestedTotal },
       { key: "CONFIRMED", label: "Confirmed", count: confirmed },
       { key: "REGISTERED", label: "Registered", count: registered },
     ],

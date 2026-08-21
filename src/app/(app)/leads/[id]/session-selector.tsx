@@ -142,7 +142,7 @@ export function SessionSelectorDialog({
       toast.error(res.error);
       return;
     }
-    toast.success("Session assigned to lead");
+    toast.success("Course run assigned to lead");
     setOpen(false);
     router.refresh();
   }
@@ -152,9 +152,9 @@ export function SessionSelectorDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Select a Session</DialogTitle>
+          <DialogTitle>Select a Course Run</DialogTitle>
           <DialogDescription>
-            Choose the course session this lead will attend. You can change it later.
+            Choose the course run this lead will attend. You can change it later.
           </DialogDescription>
         </DialogHeader>
 
@@ -165,7 +165,7 @@ export function SessionSelectorDialog({
             </div>
           ) : sessions.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No upcoming sessions available for this course.
+              No upcoming course runs available for this course.
             </p>
           ) : (
             sessions.map((s) => (
@@ -189,7 +189,7 @@ export function SessionSelectorDialog({
             disabled={!selected || saving}
           >
             {saving ? <Loader2 className="size-4 animate-spin" /> : null}
-            Confirm Session
+            Confirm Course Run
           </Button>
         </div>
       </DialogContent>
@@ -208,7 +208,7 @@ export function RemoveSessionButton({ leadId }: { leadId: string }) {
         toast.error(res.error);
         return;
       }
-      toast.success("Session removed");
+      toast.success("Course run removed");
       router.refresh();
     });
   }
@@ -219,7 +219,7 @@ export function RemoveSessionButton({ leadId }: { leadId: string }) {
       onClick={handleRemove}
       disabled={pending}
       className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-      title="Remove session assignment"
+      title="Remove course run assignment"
     >
       {pending ? (
         <Loader2 className="size-3 animate-spin" />

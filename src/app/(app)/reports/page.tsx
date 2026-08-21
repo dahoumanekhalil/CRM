@@ -7,6 +7,9 @@ import {
   getRevenueReport,
   getTopCampaigns,
   getTopCourses,
+  getSalesRepReport,
+  getExpensesReport,
+  getAttendanceReport,
   resolveRange,
 } from "./actions";
 import { ReportsHeader } from "./reports-header";
@@ -14,6 +17,9 @@ import { RevenueSection } from "./sections/revenue-section";
 import { PipelineSection } from "./sections/pipeline-section";
 import { CampaignsSection } from "./sections/campaigns-section";
 import { CoursesSection } from "./sections/courses-section";
+import { SalesRepSection } from "./sections/sales-rep-section";
+import { ExpensesSection } from "./sections/expenses-section";
+import { AttendanceSection } from "./sections/attendance-section";
 import { format, subDays } from "date-fns";
 
 export const metadata = { title: "Reports" };
@@ -45,11 +51,15 @@ export default async function ReportsPage({
 
   const range = resolveRange(parsed.from, parsed.to);
 
-  const [revenue, topCampaigns, topCourses] = await Promise.all([
-    getRevenueReport(range),
-    getTopCampaigns(range, 5),
-    getTopCourses(range, 5),
-  ]);
+  const [revenue, topCampaigns, topCourses, salesReps, expenses, attendance] =
+    await Promise.all([
+      getRevenueReport(range),
+      getTopCampaigns(range, 5),
+      getTopCourses(range, 5),
+      getSalesRepReport(range),
+      getExpensesReport(range),
+      getAttendanceReport(range, 10),
+    ]);
   const pipeline = await getPipelineReport(range, revenue.totalByCurrency);
 
   const defaultFrom = format(subDays(new Date(), 29), "yyyy-MM-dd");
@@ -69,6 +79,11 @@ export default async function ReportsPage({
         <div className="grid gap-6 xl:grid-cols-2">
           <CampaignsSection rows={topCampaigns} />
           <CoursesSection rows={topCourses} />
+        </div>
+        <SalesRepSection rows={salesReps} />
+        <div className="grid gap-6 xl:grid-cols-2">
+          <ExpensesSection data={expenses} />
+          <AttendanceSection rows={attendance} />
         </div>
       </div>
     </>

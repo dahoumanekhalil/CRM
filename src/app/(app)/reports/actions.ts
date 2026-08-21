@@ -1,13 +1,8 @@
 import "server-only";
 import { differenceInCalendarDays, startOfDay, subDays } from "date-fns";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/auth";
-
-async function requireSession() {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Not authenticated");
-  return session;
-}
+import { Prisma } from "@prisma/client";
+import { requirePermissionAction } from "@/lib/auth-guards";
 
 function serializeAmount(amount: unknown): number {
   if (amount === null || amount === undefined) return 0;
@@ -94,7 +89,7 @@ export interface RevenueReport {
 export async function getRevenueReport(
   range: ResolvedRange
 ): Promise<RevenueReport> {
-  await requireSession();
+  await requirePermissionAction("reports.view");
   const [current, previous, completedCount] = await Promise.all([
     sumRevenue(range.from, range.to),
     sumRevenue(range.prevFrom, range.prevTo),
@@ -157,7 +152,7 @@ export async function getPipelineReport(
   range: ResolvedRange,
   revenueByCurrency: Record<string, number>
 ): Promise<PipelineReport> {
-  await requireSession();
+  await requirePermissionAction("reports.view");
   const inRange = { gte: range.from, lte: range.to };
 
   const [leadsInRange, convertedInRange, registered, attendedSessions] =
@@ -210,7 +205,7 @@ export async function getTopCampaigns(
   range: ResolvedRange,
   limit = 5
 ): Promise<TopCampaignRow[]> {
-  await requireSession();
+  await requirePermissionAction("reports.view");
   const inRange = { gte: range.from, lte: range.to };
 
   // Query 1: campaigns + their leads in range. We fetch studentId to later
@@ -321,7 +316,7 @@ export async function getTopCourses(
   range: ResolvedRange,
   limit = 5
 ): Promise<TopCourseRow[]> {
-  await requireSession();
+  await requirePermissionAction("reports.view");
   const inRange = { gte: range.from, lte: range.to };
 
   // Query 1: courses + session IDs + counts. No nested payments — that's
@@ -424,4 +419,189 @@ export async function getTopCourses(
       return b.registrations - a.registrations;
     })
     .slice(0, limit);
+}
+
+// ── Sales performance per rep ────────────────────────────────────────────────
+
+export interface SalesRepRow {
+  userId: string;
+  name: string | null;
+  email: string;
+  leadsInRange: number;
+  conversions: number;
+  registrations: number;
+}
+
+export async function getSalesRepReport(
+  range: ResolvedRange
+): Promise<SalesRepRow[]> {
+  await requirePermissionAction("reports.view");
+  const inRange = { gte: range.from, lte: range.to };
+
+  const ownedLeads = await prisma.lead.findMany({
+    where: { createdAt: inRange, ownerId: { not: null } },
+    select: { ownerId: true },
+    distinct: ["ownerId"],
+  });
+  if (ownedLeads.length === 0) return [];
+
+  const repIds = ownedLeads.map((r) => r.ownerId!);
+
+  const [users, leadCounts, conversionCounts, regCounts] = await Promise.all([
+    prisma.user.findMany({
+      where: { id: { in: repIds } },
+      select: { id: true, name: true, email: true },
+    }),
+    prisma.lead.groupBy({
+      by: ["ownerId"],
+      where: { createdAt: inRange, ownerId: { in: repIds } },
+      _count: { _all: true },
+    }),
+    prisma.lead.groupBy({
+      by: ["ownerId"],
+      where: {
+        createdAt: inRange,
+        ownerId: { in: repIds },
+        studentId: { not: null },
+      },
+      _count: { _all: true },
+    }),
+    prisma.registration.groupBy({
+      by: ["salesOwnerId"],
+      where: {
+        registeredAt: inRange,
+        salesOwnerId: { in: repIds },
+      },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const leadMap = new Map(leadCounts.map((r) => [r.ownerId, r._count._all]));
+  const convMap = new Map(conversionCounts.map((r) => [r.ownerId, r._count._all]));
+  const regMap = new Map(regCounts.map((r) => [r.salesOwnerId, r._count._all]));
+
+  return users
+    .map((u) => ({
+      userId: u.id,
+      name: u.name,
+      email: u.email,
+      leadsInRange: leadMap.get(u.id) ?? 0,
+      conversions: convMap.get(u.id) ?? 0,
+      registrations: regMap.get(u.id) ?? 0,
+    }))
+    .sort((a, b) => b.leadsInRange - a.leadsInRange);
+}
+
+// ── Expenses by category ─────────────────────────────────────────────────────
+// Expense model is not in the Prisma typed client (DLL lock) — must use raw SQL.
+
+const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
+  VENUE: "Venue",
+  CATERING: "Catering",
+  EQUIPMENT: "Equipment",
+  PRINTING: "Printing",
+  TRANSPORT: "Transport",
+  INSTRUCTOR_FEE: "Instructor Fee",
+  MARKETING: "Marketing",
+  UTILITIES: "Utilities",
+  OTHER: "Other",
+};
+
+export interface ExpensesReport {
+  total: number;
+  count: number;
+  byCategory: Array<{ category: string; label: string; total: number }>;
+}
+
+export async function getExpensesReport(
+  range: ResolvedRange
+): Promise<ExpensesReport> {
+  await requirePermissionAction("reports.view");
+
+  type RawRow = { category: string; total: string | null; cnt: string };
+  const rows = await prisma.$queryRaw<RawRow[]>(Prisma.sql`
+    SELECT
+      category,
+      CAST(SUM(amount) AS TEXT)  AS total,
+      CAST(COUNT(*)   AS TEXT)   AS cnt
+    FROM "Expense"
+    WHERE status != 'CANCELLED'
+      AND "createdAt" >= ${range.from}
+      AND "createdAt" <= ${range.to}
+    GROUP BY category
+    ORDER BY SUM(amount) DESC
+  `);
+
+  const total = rows.reduce((s, r) => s + Number(r.total ?? 0), 0);
+  const count = rows.reduce((s, r) => s + Number(r.cnt), 0);
+
+  return {
+    total,
+    count,
+    byCategory: rows.map((r) => ({
+      category: r.category,
+      label: EXPENSE_CATEGORY_LABELS[r.category] ?? r.category,
+      total: Number(r.total ?? 0),
+    })),
+  };
+}
+
+// ── Attendance rate by session ───────────────────────────────────────────────
+
+export interface AttendanceRow {
+  sessionId: string;
+  courseName: string;
+  courseSlug: string;
+  startDate: Date;
+  city: string | null;
+  enrolled: number;
+  present: number;
+  rate: number; // 0–100
+}
+
+export async function getAttendanceReport(
+  range: ResolvedRange,
+  limit = 10
+): Promise<AttendanceRow[]> {
+  await requirePermissionAction("reports.view");
+
+  const sessions = await prisma.courseSession.findMany({
+    where: {
+      startDate: { gte: range.from, lte: range.to },
+      status: { notIn: ["DRAFT", "CANCELLED"] },
+    },
+    orderBy: { startDate: "desc" },
+    take: limit,
+    select: {
+      id: true,
+      startDate: true,
+      city: true,
+      course: { select: { name: true, slug: true } },
+      _count: {
+        select: {
+          registrations: {
+            where: { status: { in: ["CONFIRMED", "ATTENDING", "COMPLETED"] } },
+          },
+          attendance: {
+            where: { status: { in: ["PRESENT", "LATE"] } },
+          },
+        },
+      },
+    },
+  });
+
+  return sessions.map((s) => {
+    const enrolled = s._count.registrations;
+    const present = s._count.attendance;
+    return {
+      sessionId: s.id,
+      courseName: s.course.name,
+      courseSlug: s.course.slug,
+      startDate: s.startDate,
+      city: s.city,
+      enrolled,
+      present,
+      rate: enrolled > 0 ? Math.round((present / enrolled) * 100) : 0,
+    };
+  });
 }

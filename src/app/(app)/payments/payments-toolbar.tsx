@@ -33,6 +33,7 @@ const humanize = (s: string) =>
 const STATUS_TABS = [
   { value: "ALL" as const, label: "All" },
   ...PAYMENT_STATUSES.map((s) => ({ value: s, label: humanize(s) })),
+  { value: "OUTSTANDING" as const, label: "Outstanding Balance" },
 ];
 
 export function PaymentsToolbar({

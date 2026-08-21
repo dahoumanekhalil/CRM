@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { Prisma, SessionStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { requirePermissionAction } from "@/lib/auth-guards";
 import {
   listAttendanceSchema,
   recordAttendanceSchema,
@@ -91,7 +92,7 @@ export async function recordAttendance(
       error: parsed.error.issues[0]?.message ?? "Invalid input",
     };
   }
-  const session = await requireSession();
+  const session = await requirePermissionAction("attendance.write");
   const d = parsed.data;
   const sessionDate = parseDateOnly(d.sessionDate);
 
@@ -303,6 +304,7 @@ export async function listSessionsForAttendance(input: ListAttendanceInput) {
     take: 100,
     include: {
       course: { select: { id: true, name: true, slug: true } },
+      instructor: { select: { firstName: true, lastName: true } },
       _count: {
         select: {
           registrations: {
@@ -360,6 +362,9 @@ export async function listSessionsForAttendance(input: ListAttendanceInput) {
     location: r.location,
     status: r.status,
     course: r.course,
+    instructorName: r.instructor
+      ? [r.instructor.firstName, r.instructor.lastName].filter(Boolean).join(" ") || null
+      : null,
     registrations: r._count.registrations,
     todayPresent: todayAttendance.get(r.id) ?? 0,
     priority: priorityOf(r.startDate, r.endDate, r.status),

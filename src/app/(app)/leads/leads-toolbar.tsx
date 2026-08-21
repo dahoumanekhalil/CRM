@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { leadFilters } from "./leads-filters";
-import { LEAD_STATUSES, LEAD_FOLLOW_UP_FILTERS } from "@/lib/schemas/lead";
+import { VISIBLE_LEAD_STATUSES, LEAD_FOLLOW_UP_FILTERS } from "@/lib/schemas/lead";
 import { Star } from "lucide-react";
 import type { LeadCoursePickerItem } from "./actions";
 import { exportLeadsCsv } from "./export";
@@ -31,7 +31,7 @@ const humanize = (s: string) =>
 
 const STATUS_TABS = [
   { value: "ALL" as const, label: "All" },
-  ...LEAD_STATUSES.map((s) => ({ value: s, label: humanize(s) })),
+  ...VISIBLE_LEAD_STATUSES.map((s) => ({ value: s, label: humanize(s) })),
 ];
 
 export function LeadsToolbar({

@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { useQueryStates } from "nuqs";
-import { Receipt, X } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Receipt, X } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { DataTable } from "@/components/tables/data-table";
@@ -26,132 +26,103 @@ import { cn } from "@/lib/utils";
 import { PAYMENT_METHODS, PAYMENT_STATUSES } from "@/lib/schemas/payment";
 
 import { transactionFilters } from "./transaction-filters";
-import type { TransactionRow, TransactionSummary } from "./actions";
+import type { LedgerRow, LedgerSummary } from "./actions";
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const humanize = (s: string) =>
-  s
-    .toLowerCase()
-    .split("_")
-    .map((w) => w[0]?.toUpperCase() + w.slice(1))
-    .join(" ");
+  s.toLowerCase().split("_").map((w) => w[0]?.toUpperCase() + w.slice(1)).join(" ");
 
 function formatMoney(amount: number, currency: string): string {
   try {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
       currency,
-      maximumFractionDigits: 2,
+      maximumFractionDigits: 0,
     }).format(amount);
   } catch {
     return `${amount.toLocaleString()} ${currency}`;
   }
 }
 
-function getInitials(firstName: string, lastName: string): string {
-  return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-}
+// ─── Summary Cards ────────────────────────────────────────────────────────────
 
-// ─── Summary Cards ───────────────────────────────────────────────────────────
-
-function SummaryCards({ summary }: { summary: TransactionSummary }) {
-  // Find the largest completed currency for primary display
-  const currencyEntries = Object.entries(summary.completedByCurrency).sort(
-    ([, a], [, b]) => b - a
-  );
-  const topCurrency = currencyEntries[0];
-  const extraCurrencies = currencyEntries.length - 1;
-
-  const receivedValue = topCurrency
-    ? formatMoney(topCurrency[1], topCurrency[0])
-    : "—";
-
-  const receivedContext =
-    extraCurrencies > 0
-      ? `+${extraCurrencies} more ${extraCurrencies === 1 ? "currency" : "currencies"}`
-      : topCurrency
-      ? topCurrency[0]
-      : undefined;
-
-  const pendingValue =
-    summary.pendingTotal > 0 ? formatMoney(summary.pendingTotal, "USD") : "—";
+function SummaryCards({ summary }: { summary: LedgerSummary }) {
+  const isProfit = summary.netTotal >= 0;
+  const currency = summary.currency;
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-      {/* Received */}
       <Card className="gap-0 py-5">
         <CardContent className="flex flex-col gap-2 px-5">
-          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Received
-          </span>
-          <span
-            className={cn(
-              "text-2xl font-semibold tabular-nums leading-none",
-              topCurrency ? "text-success" : "text-muted-foreground"
-            )}
-          >
-            {receivedValue}
-          </span>
-          {receivedContext ? (
-            <span className="text-xs text-muted-foreground">
-              {receivedContext}
+          <div className="flex items-center gap-1.5">
+            <ArrowDownLeft className="size-3.5 text-green-600 dark:text-green-400" />
+            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Income
             </span>
-          ) : (
-            <span className="text-xs text-muted-foreground">
-              No completed payments
-            </span>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Pending */}
-      <Card className="gap-0 py-5">
-        <CardContent className="flex flex-col gap-2 px-5">
-          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Pending
-          </span>
-          <span
-            className={cn(
-              "text-2xl font-semibold tabular-nums leading-none",
-              summary.pendingTotal > 0
-                ? "text-warning"
-                : "text-muted-foreground"
-            )}
-          >
-            {pendingValue}
+          </div>
+          <span className="text-2xl font-semibold tabular-nums leading-none text-green-600 dark:text-green-400">
+            {summary.incomeTotal > 0
+              ? formatMoney(summary.incomeTotal, currency)
+              : "—"}
           </span>
           <span className="text-xs text-muted-foreground">
-            Awaiting payment
+            {summary.paymentCount} payment{summary.paymentCount !== 1 ? "s" : ""}
           </span>
         </CardContent>
       </Card>
 
-      {/* Transactions count */}
       <Card className="gap-0 py-5">
         <CardContent className="flex flex-col gap-2 px-5">
+          <div className="flex items-center gap-1.5">
+            <ArrowUpRight className="size-3.5 text-destructive" />
+            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Expenses
+            </span>
+          </div>
+          <span className="text-2xl font-semibold tabular-nums leading-none text-destructive">
+            {summary.expenseTotal > 0
+              ? formatMoney(summary.expenseTotal, currency)
+              : "—"}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {summary.expenseCount} expense{summary.expenseCount !== 1 ? "s" : ""}
+          </span>
+        </CardContent>
+      </Card>
+
+      <Card
+        className={cn(
+          "gap-0 py-5 border",
+          isProfit
+            ? "border-green-200 bg-green-50/40 dark:border-green-900/40 dark:bg-green-950/10"
+            : "border-red-200 bg-red-50/40 dark:border-red-900/40 dark:bg-red-950/10"
+        )}
+      >
+        <CardContent className="flex flex-col gap-2 px-5">
           <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Transactions
+            Net
           </span>
-          <span className="text-2xl font-semibold tabular-nums leading-none">
-            {summary.totalCount.toLocaleString()}
+          <span
+            className={cn(
+              "text-2xl font-semibold tabular-nums leading-none",
+              isProfit
+                ? "text-green-600 dark:text-green-400"
+                : "text-destructive"
+            )}
+          >
+            {formatMoney(summary.netTotal, currency)}
           </span>
-          {summary.refundedCount > 0 ? (
-            <span className="text-xs text-muted-foreground">
-              {summary.refundedCount.toLocaleString()} refunded
-            </span>
-          ) : (
-            <span className="text-xs text-muted-foreground">
-              Total in view
-            </span>
-          )}
+          <span className="text-xs text-muted-foreground">
+            Income − Expenses
+          </span>
         </CardContent>
       </Card>
     </div>
   );
 }
 
-// ─── Toolbar ─────────────────────────────────────────────────────────────────
+// ─── Toolbar ──────────────────────────────────────────────────────────────────
 
 const STATUS_OPTIONS = [
   { value: "ALL", label: "All statuses" },
@@ -163,7 +134,7 @@ const METHOD_OPTIONS = [
   ...PAYMENT_METHODS.map((m) => ({ value: m, label: humanize(m) })),
 ];
 
-function TransactionsToolbar({ total }: { total: number }) {
+function LedgerToolbar({ total }: { total: number }) {
   const [filters, setFilters] = useQueryStates(transactionFilters);
 
   const hasActiveFilters =
@@ -176,16 +147,14 @@ function TransactionsToolbar({ total }: { total: number }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Row 1: search + date range + method/currency + clear */}
       <div className="flex flex-wrap items-center gap-2">
         <SearchInput
           containerClassName="w-64 shrink-0"
           value={filters.q}
           onChange={(v) => setFilters({ q: v, page: 1 })}
-          placeholder="Search student, reference…"
+          placeholder="Search student, title, reference…"
         />
 
-        {/* Date range */}
         <div className="flex items-center gap-1.5">
           <Input
             type="date"
@@ -206,12 +175,7 @@ function TransactionsToolbar({ total }: { total: number }) {
 
         <Select
           value={filters.method}
-          onValueChange={(v) =>
-            setFilters({
-              method: v as typeof filters.method,
-              page: 1,
-            })
-          }
+          onValueChange={(v) => setFilters({ method: v as typeof filters.method, page: 1 })}
         >
           <SelectTrigger size="sm" className="h-9 w-[150px]">
             <SelectValue placeholder="Method" />
@@ -234,10 +198,8 @@ function TransactionsToolbar({ total }: { total: number }) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All currencies</SelectItem>
-            {["USD", "EUR", "GBP", "SAR", "AED", "MAD", "EGP"].map((c) => (
-              <SelectItem key={c} value={c}>
-                {c}
-              </SelectItem>
+            {["DZD", "USD", "EUR", "GBP", "SAR", "AED", "MAD", "EGP"].map((c) => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -247,24 +209,20 @@ function TransactionsToolbar({ total }: { total: number }) {
             variant="ghost"
             size="sm"
             onClick={() =>
-              setFilters({
-                q: "",
-                from: "",
-                to: "",
-                status: "ALL",
-                method: "ALL",
-                currency: "ALL",
-                page: 1,
-              })
+              setFilters({ q: "", from: "", to: "", status: "ALL", method: "ALL", currency: "ALL", page: 1 })
             }
             className="text-muted-foreground hover:text-foreground"
           >
             <X className="size-3.5" /> Clear
           </Button>
         ) : null}
+
+        <span className="ms-auto text-xs tabular-nums text-muted-foreground">
+          {total} {total === 1 ? "entry" : "entries"}
+        </span>
       </div>
 
-      {/* Row 2: status tab pills */}
+      {/* Status filter pills — only meaningful for payment rows */}
       <div className="flex flex-wrap items-center gap-1.5">
         {STATUS_OPTIONS.map((tab) => {
           const active = filters.status === tab.value;
@@ -292,15 +250,9 @@ function TransactionsToolbar({ total }: { total: number }) {
   );
 }
 
-// ─── Table ───────────────────────────────────────────────────────────────────
+// ─── Table ────────────────────────────────────────────────────────────────────
 
-function TransactionsTable({
-  rows,
-  total,
-}: {
-  rows: TransactionRow[];
-  total: number;
-}) {
+function LedgerTable({ rows, total }: { rows: LedgerRow[]; total: number }) {
   const [filters, setFilters] = useQueryStates(transactionFilters);
 
   const hasFilters =
@@ -311,109 +263,128 @@ function TransactionsTable({
     filters.method !== "ALL" ||
     filters.currency !== "ALL";
 
-  const columns = React.useMemo<ColumnDef<TransactionRow, unknown>[]>(
+  const columns = React.useMemo<ColumnDef<LedgerRow, unknown>[]>(
     () => [
+      {
+        id: "type",
+        header: "",
+        size: 40,
+        cell: ({ row }) => (
+          <div className="flex justify-center">
+            {row.original.kind === "payment" ? (
+              <span
+                className="inline-flex size-7 items-center justify-center rounded-full bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
+                title="Income"
+              >
+                <ArrowDownLeft className="size-3.5" />
+              </span>
+            ) : (
+              <span
+                className="inline-flex size-7 items-center justify-center rounded-full bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"
+                title="Expense"
+              >
+                <ArrowUpRight className="size-3.5" />
+              </span>
+            )}
+          </div>
+        ),
+      },
       {
         id: "date",
         header: "Date",
-        cell: ({ row }) => {
-          const date = row.original.paidAt ?? row.original.createdAt;
-          return (
-            <div className="min-w-[110px] space-y-0.5">
-              <div className="text-sm tabular-nums">
-                {format(date, "dd MMM yyyy")}
-              </div>
-              <div className="text-xs text-muted-foreground tabular-nums">
-                {format(date, "HH:mm")}
-              </div>
+        cell: ({ row }) => (
+          <div className="min-w-[100px] space-y-0.5">
+            <div className="text-sm tabular-nums">{format(row.original.date, "dd MMM yyyy")}</div>
+            <div className="text-xs text-muted-foreground tabular-nums">
+              {format(row.original.date, "HH:mm")}
             </div>
-          );
-        },
+          </div>
+        ),
       },
       {
-        id: "student",
-        header: "Student",
+        id: "description",
+        header: "Description",
         cell: ({ row }) => {
-          const s = row.original.student;
-          const name =
-            [s.firstName, s.lastName].filter(Boolean).join(" ") ||
-            s.email ||
-            "Unnamed";
-          const initials = getInitials(s.firstName || "?", s.lastName || "?");
-          return (
-            <div className="flex min-w-0 items-center gap-2.5">
-              <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
-                {initials}
-              </div>
-              <div className="min-w-0">
+          const r = row.original;
+          if (r.kind === "payment") {
+            const name =
+              [r.student.firstName, r.student.lastName].filter(Boolean).join(" ") ||
+              r.student.email ||
+              "Unnamed";
+            return (
+              <div className="min-w-0 space-y-0.5">
                 <Link
-                  href={`/students/${s.id}`}
+                  href={`/students/${r.student.id}`}
                   className="truncate text-sm font-medium hover:underline"
                 >
                   {name}
                 </Link>
-                <div className="truncate text-xs text-muted-foreground">
-                  {s.email}
-                </div>
+                {r.courseName ? (
+                  <div className="truncate text-xs text-muted-foreground">{r.courseName}</div>
+                ) : null}
               </div>
-            </div>
-          );
-        },
-      },
-      {
-        id: "course",
-        header: "Course",
-        cell: ({ row }) => {
-          const reg = row.original.registration;
-          if (!reg?.session) {
-            return <span className="text-sm text-muted-foreground/60">—</span>;
+            );
           }
           return (
             <div className="min-w-0 space-y-0.5">
-              <div className="truncate text-sm">
-                {reg.session.course.name}
-              </div>
-              {reg.session.title ? (
-                <div className="truncate text-xs text-muted-foreground">
-                  {reg.session.title}
-                </div>
-              ) : null}
+              <p className="truncate text-sm font-medium">{r.title}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {r.categoryLabel}
+                {r.courseName ? ` · ${r.courseName}` : ""}
+              </p>
             </div>
           );
         },
       },
       {
         id: "amount",
-        header: () => (
-          <span className="block w-full text-end">Amount</span>
-        ),
-        cell: ({ row }) => (
-          <div className="text-end">
-            <span className="text-sm font-semibold tabular-nums">
-              {formatMoney(row.original.amount, row.original.currency)}
-            </span>
-            <span className="ms-1.5 text-xs text-muted-foreground">
-              {row.original.currency}
-            </span>
-          </div>
-        ),
-      },
-      {
-        id: "method",
-        header: "Method",
-        cell: ({ row }) => (
-          <StatusBadge
-            status={row.original.method}
-            tone="neutral"
-          />
-        ),
+        header: () => <span className="block w-full text-end">Amount</span>,
+        cell: ({ row }) => {
+          const r = row.original;
+          const isExpense = r.kind === "expense";
+          return (
+            <div className="text-end">
+              <span
+                className={cn(
+                  "text-sm font-semibold tabular-nums",
+                  isExpense ? "text-destructive" : ""
+                )}
+              >
+                {isExpense ? "−" : ""}
+                {formatMoney(r.amount, r.currency)}
+              </span>
+            </div>
+          );
+        },
       },
       {
         id: "status",
         header: "Status",
-        cell: ({ row }) => (
-          <StatusBadge status={row.original.status} />
-        ),
+        cell: ({ row }) => {
+          const r = row.original;
+          if (r.kind === "payment") {
+            return <StatusBadge status={r.status} />;
+          }
+          return (
+            <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              Expense
+            </span>
+          );
+        },
+      },
+      {
+        id: "method",
+        header: "Method",
+        cell: ({ row }) => {
+          const r = row.original;
+          if (r.kind === "payment") {
+            return <StatusBadge status={r.method} tone="neutral" />;
+          }
+          if (r.reference) {
+            return <span className="text-xs text-muted-foreground truncate">{r.reference}</span>;
+          }
+          return <span className="text-xs text-muted-foreground/40">—</span>;
+        },
       },
     ],
     []
@@ -422,21 +393,13 @@ function TransactionsTable({
   const emptyState = hasFilters ? (
     <EmptyState
       icon={Receipt}
-      title="No transactions match your filters"
+      title="No entries match your filters"
       description="Try adjusting the date range, status, or search terms."
       action={
         <Button
           variant="outline"
           onClick={() =>
-            setFilters({
-              q: "",
-              from: "",
-              to: "",
-              status: "ALL",
-              method: "ALL",
-              currency: "ALL",
-              page: 1,
-            })
+            setFilters({ q: "", from: "", to: "", status: "ALL", method: "ALL", currency: "ALL", page: 1 })
           }
         >
           Clear filters
@@ -447,8 +410,8 @@ function TransactionsTable({
   ) : (
     <EmptyState
       icon={Receipt}
-      title="No transactions found"
-      description="Adjust your filters or record a payment in the Payments section."
+      title="No ledger entries"
+      description="Payments and expenses appear here once recorded."
       action={
         <Button variant="outline" asChild>
           <Link href="/payments">Go to Payments</Link>
@@ -479,23 +442,23 @@ function TransactionsTable({
   );
 }
 
-// ─── Root export ─────────────────────────────────────────────────────────────
+// ─── Root export ──────────────────────────────────────────────────────────────
 
 export function TransactionsClient({
   rows,
   total,
   summary,
 }: {
-  rows: TransactionRow[];
+  rows: LedgerRow[];
   total: number;
-  summary: TransactionSummary;
+  summary: LedgerSummary;
 }) {
   return (
     <div className="space-y-6">
       <SummaryCards summary={summary} />
       <div className="space-y-4">
-        <TransactionsToolbar total={total} />
-        <TransactionsTable rows={rows} total={total} />
+        <LedgerToolbar total={total} />
+        <LedgerTable rows={rows} total={total} />
       </div>
     </div>
   );

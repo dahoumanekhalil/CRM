@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { requirePermissionAction } from "@/lib/auth-guards";
 import { slugify } from "@/lib/slug";
 import {
   createCourseSchema,
@@ -49,7 +50,7 @@ export async function createCourse(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  const session = await requireSession();
+  const session = await requirePermissionAction("courses.write");
   const d = parsed.data;
   const slug = await uniqueSlug(d.slug || d.name);
   const emptyToNull = (v: string) => (v.trim() === "" ? null : v);
@@ -83,7 +84,7 @@ export async function createCourse(
 
 export async function listCourses(input: ListCoursesInput) {
   const parsed = listCoursesSchema.parse(input);
-  await requireSession();
+  await requirePermissionAction("courses.view");
 
   const where: Prisma.CourseWhereInput = {};
 
@@ -112,13 +113,33 @@ export async function listCourses(input: ListCoursesInput) {
       take: parsed.pageSize,
       include: {
         _count: { select: { sessions: true } },
+        sessions: {
+          where: {
+            status: { notIn: ["CANCELLED"] },
+            startDate: { gte: new Date() },
+          },
+          orderBy: { startDate: "asc" },
+          take: 1,
+          select: {
+            id: true,
+            startDate: true,
+            status: true,
+            city: true,
+            _count: { select: { registrations: true } },
+          },
+        },
       },
     }),
     prisma.course.count({ where }),
   ]);
 
+  const serializedRows = rows.map((r) => ({
+    ...r,
+    basePrice: r.basePrice === null ? null : Number(r.basePrice.toString()),
+  }));
+
   return {
-    rows,
+    rows: serializedRows,
     total,
     page: parsed.page,
     pageSize: parsed.pageSize,
@@ -128,7 +149,7 @@ export async function listCourses(input: ListCoursesInput) {
 export type CourseRow = Awaited<ReturnType<typeof listCourses>>["rows"][number];
 
 export async function getCourseDetail(slug: string) {
-  await requireSession();
+  await requirePermissionAction("courses.view");
   const course = await prisma.course.findUnique({
     where: { slug },
     include: {
@@ -211,7 +232,7 @@ export async function updateCourse(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  await requireSession();
+  await requirePermissionAction("courses.write");
   const d = parsed.data;
   const emptyToNull = (v: string) => (v.trim() === "" ? null : v);
 
@@ -265,7 +286,7 @@ export async function updateCourse(
 export async function duplicateCourse(
   id: string
 ): Promise<Result<{ id: string; slug: string }>> {
-  await requireSession();
+  await requirePermissionAction("courses.write");
   const src = await prisma.course.findUnique({ where: { id } });
   if (!src) return { ok: false, error: "Course not found." };
 

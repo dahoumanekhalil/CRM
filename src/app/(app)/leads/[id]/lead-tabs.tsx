@@ -2,12 +2,12 @@
 
 import * as React from "react";
 import { parseAsStringLiteral, useQueryState } from "nuqs";
-import { Activity, FileText, Info, MessagesSquare, Target } from "lucide-react";
+import { Activity, CheckSquare, FileText, Info, MessagesSquare, Target } from "lucide-react";
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import type { LeadDetail } from "../actions";
 
-const TAB_VALUES = ["overview", "communications", "notes", "attribution", "activity"] as const;
+const TAB_VALUES = ["overview", "tasks", "communications", "notes", "attribution", "activity"] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
 const tabParam = parseAsStringLiteral(TAB_VALUES)
@@ -17,17 +17,21 @@ const tabParam = parseAsStringLiteral(TAB_VALUES)
 export function LeadTabsView({
   lead,
   overviewSlot,
+  tasksSlot,
   communicationsSlot,
   notesSlot,
   attributionSlot,
   activitySlot,
+  taskCount,
 }: {
   lead: LeadDetail;
   overviewSlot: React.ReactNode;
+  tasksSlot: React.ReactNode;
   communicationsSlot: React.ReactNode;
   notesSlot: React.ReactNode;
   attributionSlot: React.ReactNode;
   activitySlot: React.ReactNode;
+  taskCount?: number;
 }) {
   const [tab, setTab] = useQueryState("tab", tabParam);
   void lead;
@@ -46,6 +50,14 @@ export function LeadTabsView({
         <TabsTrigger value="overview">
           <Info /> Overview
         </TabsTrigger>
+        <TabsTrigger value="tasks">
+          <CheckSquare /> Tasks
+          {taskCount != null && taskCount > 0 ? (
+            <span className="ms-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/10 px-1 text-[10px] font-medium text-primary">
+              {taskCount}
+            </span>
+          ) : null}
+        </TabsTrigger>
         <TabsTrigger value="communications">
           <MessagesSquare /> Communications
         </TabsTrigger>
@@ -62,6 +74,7 @@ export function LeadTabsView({
       </div>
 
       <TabsContent value="overview">{overviewSlot}</TabsContent>
+      <TabsContent value="tasks">{tasksSlot}</TabsContent>
       <TabsContent value="communications">{communicationsSlot}</TabsContent>
       <TabsContent value="notes">{notesSlot}</TabsContent>
       <TabsContent value="attribution">{attributionSlot}</TabsContent>

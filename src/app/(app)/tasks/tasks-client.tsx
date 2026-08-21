@@ -2,17 +2,11 @@
 
 import * as React from "react";
 import { parseAsString, useQueryState } from "nuqs";
-import { Plus, Filter } from "lucide-react";
+import { Plus } from "lucide-react";
+import { parseISO, isPast, isToday, isFuture } from "date-fns";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 import { TaskSheet } from "./task-sheet";
@@ -32,6 +26,32 @@ const PRESETS = [
 ] as const;
 
 type Preset = (typeof PRESETS)[number]["value"];
+
+// Group tasks by time horizon for the "All" view.
+function groupTasks(rows: TaskRow[]) {
+  const active = rows.filter(
+    (t) => t.status !== "COMPLETED" && t.status !== "CANCELLED"
+  );
+  const done = rows.filter((t) => t.status === "COMPLETED");
+
+  const overdue: TaskRow[] = [];
+  const today: TaskRow[] = [];
+  const upcoming: TaskRow[] = [];
+  const noDate: TaskRow[] = [];
+
+  for (const t of active) {
+    if (!t.dueDate) {
+      noDate.push(t);
+    } else {
+      const d = parseISO(t.dueDate);
+      if (isToday(d)) today.push(t);
+      else if (isPast(d)) overdue.push(t);
+      else upcoming.push(t);
+    }
+  }
+
+  return { overdue, today, upcoming, noDate, done };
+}
 
 export function TasksClient({
   rows,
@@ -59,21 +79,26 @@ export function TasksClient({
   const [preset, setPreset] = React.useState<Preset>("all");
   const [q, setQ] = React.useState("");
 
-  // Client-side filtering (on top of server data) for instant feel
   const filtered = React.useMemo(() => {
-    let r = rows;
-    if (q.trim()) {
-      const lower = q.toLowerCase();
-      r = r.filter((t) => t.title.toLowerCase().includes(lower));
-    }
-    return r;
+    if (!q.trim()) return rows;
+    const lower = q.toLowerCase();
+    return rows.filter((t) => t.title.toLowerCase().includes(lower));
   }, [rows, q]);
+
+  const groups = React.useMemo(
+    () => (preset === "all" ? groupTasks(filtered) : null),
+    [preset, filtered]
+  );
+
+  const handleEdit = (task: TaskRow) => {
+    setEditingTask(task);
+    setSheetOpen(false);
+  };
 
   return (
     <>
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Preset tabs */}
         <div className="flex items-center gap-1 rounded-lg border border-border/60 bg-muted/40 p-0.5">
           {PRESETS.map((p) => (
             <button
@@ -92,7 +117,6 @@ export function TasksClient({
           ))}
         </div>
 
-        {/* Search */}
         <Input
           placeholder="Search tasks…"
           value={q}
@@ -106,15 +130,12 @@ export function TasksClient({
         </Button>
       </div>
 
-      {/* Table */}
-      <TasksTable
-        rows={filtered}
-        total={total}
-        onEdit={(task) => {
-          setEditingTask(task);
-          setSheetOpen(false);
-        }}
-      />
+      {/* Grouped view (All preset) */}
+      {groups ? (
+        <GroupedView groups={groups} total={total} onEdit={handleEdit} />
+      ) : (
+        <TasksTable rows={filtered} total={total} onEdit={handleEdit} />
+      )}
 
       {/* Create sheet */}
       <TaskSheet
@@ -126,10 +147,104 @@ export function TasksClient({
       {/* Edit sheet */}
       <TaskSheet
         open={editOpen}
-        onOpenChange={(open) => { if (!open) closeEdit(); }}
+        onOpenChange={(open) => {
+          if (!open) closeEdit();
+        }}
         task={editingTask}
         users={users}
       />
     </>
+  );
+}
+
+function GroupedView({
+  groups,
+  total,
+  onEdit,
+}: {
+  groups: ReturnType<typeof groupTasks>;
+  total: number;
+  onEdit: (t: TaskRow) => void;
+}) {
+  const { overdue, today, upcoming, noDate, done } = groups;
+  const isEmpty =
+    overdue.length === 0 &&
+    today.length === 0 &&
+    upcoming.length === 0 &&
+    noDate.length === 0 &&
+    done.length === 0;
+
+  if (isEmpty) {
+    return (
+      <TasksTable rows={[]} total={0} onEdit={onEdit} />
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {overdue.length > 0 && (
+        <TaskGroup
+          label="Overdue"
+          count={overdue.length}
+          labelClassName="text-destructive"
+          rows={overdue}
+          onEdit={onEdit}
+        />
+      )}
+      {today.length > 0 && (
+        <TaskGroup
+          label="Today"
+          count={today.length}
+          labelClassName="text-amber-600 dark:text-amber-400"
+          rows={today}
+          onEdit={onEdit}
+        />
+      )}
+      {upcoming.length > 0 && (
+        <TaskGroup label="Upcoming" count={upcoming.length} rows={upcoming} onEdit={onEdit} />
+      )}
+      {noDate.length > 0 && (
+        <TaskGroup label="No due date" count={noDate.length} rows={noDate} onEdit={onEdit} />
+      )}
+      {done.length > 0 && (
+        <TaskGroup label="Completed" count={done.length} rows={done} onEdit={onEdit} />
+      )}
+      <p className="text-xs text-muted-foreground">
+        {total} task{total !== 1 ? "s" : ""} total
+      </p>
+    </div>
+  );
+}
+
+function TaskGroup({
+  label,
+  count,
+  rows,
+  onEdit,
+  labelClassName,
+}: {
+  label: string;
+  count: number;
+  rows: TaskRow[];
+  onEdit: (t: TaskRow) => void;
+  labelClassName?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <h2
+          className={cn(
+            "text-xs font-semibold uppercase tracking-wider",
+            labelClassName ?? "text-muted-foreground"
+          )}
+        >
+          {label}
+        </h2>
+        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1 text-[10px] font-medium tabular-nums text-muted-foreground">
+          {count}
+        </span>
+      </div>
+      <TasksTable rows={rows} total={count} onEdit={onEdit} />
+    </div>
   );
 }

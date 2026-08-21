@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { leadFormSubmissionSchema } from "@/lib/schemas/lead-form";
+import { normalizeEmail } from "@/lib/string-utils";
 
 // Public, unauthenticated endpoint. Landing pages POST here.
 // Response is always JSON; never leak stack traces.
@@ -123,7 +124,7 @@ export async function POST(request: Request) {
   }
 
   // 5. Per-email rate limit (secondary, catches IP-rotating bots)
-  const emailKey = d.email.toLowerCase();
+  const emailKey = d.email.trim().toLowerCase();
   const emailCheck = checkBucket(emailBuckets, emailKey, EMAIL_MAX, EMAIL_WINDOW_MS);
   if (!emailCheck.allowed) {
     return NextResponse.json(
@@ -137,8 +138,8 @@ export async function POST(request: Request) {
 
   // 6. Resolve landing page
   const page = await prisma.landingPage.findUnique({
-    where: { id: d.landingPageId },
-    select: { id: true, title: true, courseId: true },
+    where: { id: d.landingPageId, status: "PUBLISHED" },
+    select: { id: true, title: true, slug: true, courseId: true },
   });
   if (!page) {
     return NextResponse.json(
@@ -151,18 +152,58 @@ export async function POST(request: Request) {
   const trimmed = d.name.trim();
   const spaceIdx = trimmed.indexOf(" ");
   const firstName = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
-  const lastName = spaceIdx === -1 ? null : trimmed.slice(spaceIdx + 1).trim();
+  const lastName = spaceIdx === -1 ? null : trimmed.slice(spaceIdx + 1).trim() || null;
   const emptyToNull = (v: string) => (v.trim() === "" ? null : v);
+  const email = normalizeEmail(d.email) ?? emptyToNull(d.email);
+  const phone = emptyToNull(d.phone);
+
+  // Try to map utmCampaign → Campaign.id for attribution.
+  // Failure is non-fatal: if the campaign lookup fails or finds nothing, lead is still created.
+  const campaignId = d.utmCampaign
+    ? await prisma.campaign
+        .findFirst({
+          where: {
+            OR: [
+              { name: { equals: d.utmCampaign, mode: "insensitive" } },
+              { source: { equals: d.utmCampaign, mode: "insensitive" } },
+            ],
+          },
+          select: { id: true },
+        })
+        .then((c) => c?.id ?? null)
+        .catch(() => null)
+    : null;
+
+  // Advisory duplicate check before creation — log only, never block submission.
+  if (email || phone) {
+    void (async () => {
+      try {
+        const where = email
+          ? { email: { equals: email, mode: "insensitive" as const } }
+          : { phone: { contains: phone! } };
+        const existing = await prisma.lead.findFirst({ where, select: { id: true, email: true } });
+        if (existing) {
+          console.info("[from-landing] potential duplicate lead", {
+            existingId: existing.id,
+            submittedEmail: email,
+          });
+        }
+      } catch {
+        // Non-blocking — ignore errors from advisory check
+      }
+    })();
+  }
 
   try {
     await prisma.lead.create({
       data: {
         firstName,
         lastName,
-        email: d.email,
-        phone: emptyToNull(d.phone),
+        email,
+        phone,
         notes: emptyToNull(d.message),
-        source: `Landing page: ${page.title}`,
+        source: page.slug,
+        campaignId,
         status: "NEW",
         subscribed: d.subscribed,
         utmSource: d.utmSource ?? null,

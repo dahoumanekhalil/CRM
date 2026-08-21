@@ -108,7 +108,7 @@ export interface FormProps {
   heading?: string;
   subheading?: string;
   submitLabel?: string;
-  // Which fields to render. Name + email are always required.
+  // Which fields to render when no formId is linked (legacy inline mode).
   showPhone?: boolean;
   showMessage?: boolean;
   // Consent checkbox — "Yes, keep me posted about future courses".
@@ -119,6 +119,10 @@ export interface FormProps {
   successMessage?: string;
   // Privacy disclosure shown under the submit button.
   privacyNote?: string;
+  // Link to a Form from the forms library (stored in block JSON).
+  formId?: string;
+  // Injected at render time by the server — NOT stored in block JSON.
+  formDefinition?: import("@/lib/forms/types").FormDefinition;
 }
 
 export type BlockPropsByType = {

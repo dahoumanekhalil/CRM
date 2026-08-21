@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { ExternalLink } from "lucide-react";
 import type {
   BenefitsProps,
   CTAProps,
@@ -22,6 +24,7 @@ import {
   TextAreaField,
   TextField,
 } from "./inspector-fields";
+import { useForms } from "./forms-context";
 
 // Small helper — merge a patch into props and dispatch upward.
 function patcher<T>(value: T, onChange: (next: T) => void) {
@@ -425,8 +428,57 @@ export function FormForm({
   onChange: (next: FormProps) => void;
 }) {
   const patch = patcher(value, onChange);
+  const forms = useForms();
+  const linkedForm = forms.find((f) => f.id === value.formId);
+  const useLinked = !!value.formId;
+
   return (
     <>
+      {/* Link to a form from the library */}
+      <InspectorSection title="Linked form">
+        <p className="mb-2 text-xs text-muted-foreground">
+          Link to a form from the forms library to use custom fields and collect
+          all submissions in one place.
+        </p>
+        <div className="space-y-2">
+          <select
+            value={value.formId ?? ""}
+            onChange={(e) =>
+              patch({ formId: e.target.value || undefined })
+            }
+            className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring"
+          >
+            <option value="">— Use default fields —</option>
+            {forms.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name} ({f.fieldCount} fields)
+              </option>
+            ))}
+          </select>
+          {linkedForm ? (
+            <Link
+              href={`/landing-pages/forms/${linkedForm.id}/edit`}
+              target="_blank"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              <ExternalLink className="size-3" />
+              Edit "{linkedForm.name}"
+            </Link>
+          ) : null}
+          {forms.length === 0 ? (
+            <Link
+              href="/landing-pages/forms/new"
+              target="_blank"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              <ExternalLink className="size-3" />
+              Create a form
+            </Link>
+          ) : null}
+        </div>
+      </InspectorSection>
+
+      {/* Heading — shown for both modes */}
       <InspectorSection title="Heading">
         <TextField
           label="Section heading"
@@ -439,28 +491,33 @@ export function FormForm({
           onChange={(v) => patch({ subheading: v })}
         />
       </InspectorSection>
-      <InspectorSection title="Fields">
-        <ToggleField
-          label="Show phone field"
-          value={value.showPhone ?? true}
-          onChange={(v) => patch({ showPhone: v })}
-        />
-        <ToggleField
-          label="Show message field"
-          value={value.showMessage ?? true}
-          onChange={(v) => patch({ showMessage: v })}
-        />
-        <ToggleField
-          label="Show consent checkbox"
-          value={value.showConsent ?? true}
-          onChange={(v) => patch({ showConsent: v })}
-        />
-        <TextField
-          label="Consent label"
-          value={value.consentLabel}
-          onChange={(v) => patch({ consentLabel: v })}
-        />
-      </InspectorSection>
+
+      {/* Default fields — only shown when NOT linked */}
+      {!useLinked ? (
+        <InspectorSection title="Fields">
+          <ToggleField
+            label="Show phone field"
+            value={value.showPhone ?? true}
+            onChange={(v) => patch({ showPhone: v })}
+          />
+          <ToggleField
+            label="Show message field"
+            value={value.showMessage ?? true}
+            onChange={(v) => patch({ showMessage: v })}
+          />
+          <ToggleField
+            label="Show consent checkbox"
+            value={value.showConsent ?? true}
+            onChange={(v) => patch({ showConsent: v })}
+          />
+          <TextField
+            label="Consent label"
+            value={value.consentLabel}
+            onChange={(v) => patch({ consentLabel: v })}
+          />
+        </InspectorSection>
+      ) : null}
+
       <InspectorSection title="Submit">
         <TextField
           label="Button label"

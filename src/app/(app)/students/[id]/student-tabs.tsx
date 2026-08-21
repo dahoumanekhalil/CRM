@@ -4,6 +4,7 @@ import * as React from "react";
 import { parseAsStringLiteral, useQueryState } from "nuqs";
 import {
   Activity,
+  CheckSquare,
   ClipboardList,
   FileText,
   Info,
@@ -16,6 +17,7 @@ import type { StudentDetail } from "../actions";
 
 const TAB_VALUES = [
   "overview",
+  "tasks",
   "registrations",
   "payments",
   "communications",
@@ -31,19 +33,23 @@ const tabParam = parseAsStringLiteral(TAB_VALUES)
 export function StudentTabsView({
   student,
   overviewSlot,
+  tasksSlot,
   registrationsSlot,
   paymentsSlot,
   communicationsSlot,
   notesSlot,
   activitySlot,
+  taskCount,
 }: {
   student: StudentDetail;
   overviewSlot: React.ReactNode;
+  tasksSlot: React.ReactNode;
   registrationsSlot: React.ReactNode;
   paymentsSlot: React.ReactNode;
   communicationsSlot: React.ReactNode;
   notesSlot: React.ReactNode;
   activitySlot: React.ReactNode;
+  taskCount?: number;
 }) {
   const [tab, setTab] = useQueryState("tab", tabParam);
 
@@ -60,6 +66,14 @@ export function StudentTabsView({
       >
         <TabsTrigger value="overview">
           <Info /> Overview
+        </TabsTrigger>
+        <TabsTrigger value="tasks">
+          <CheckSquare /> Tasks
+          {taskCount != null && taskCount > 0 ? (
+            <span className="ms-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/10 px-1 text-[10px] font-medium text-primary">
+              {taskCount}
+            </span>
+          ) : null}
         </TabsTrigger>
         <TabsTrigger value="registrations">
           <ClipboardList />
@@ -84,6 +98,7 @@ export function StudentTabsView({
       </div>
 
       <TabsContent value="overview">{overviewSlot}</TabsContent>
+      <TabsContent value="tasks">{tasksSlot}</TabsContent>
       <TabsContent value="registrations">{registrationsSlot}</TabsContent>
       <TabsContent value="payments">{paymentsSlot}</TabsContent>
       <TabsContent value="communications">{communicationsSlot}</TabsContent>

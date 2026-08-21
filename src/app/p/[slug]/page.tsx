@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { parseBlocks, parseTheme } from "@/lib/landing-blocks/schemas";
 import { PageRenderer } from "@/components/landing-blocks/block-renderer";
+import type { LandingBlock } from "@/lib/landing-blocks/types";
+import type { FormField, FormSettings } from "@/lib/forms/types";
 
 export const dynamic = "force-dynamic";
 
@@ -53,5 +55,52 @@ export default async function PublicLandingPage({
   const blocks = parseBlocks(page.blocks);
   const theme = parseTheme(page.theme);
 
-  return <PageRenderer blocks={blocks} theme={theme} landingPageId={page.id} animated />;
+  // Collect all formIds referenced by form blocks and fetch their definitions.
+  const formIds = blocks
+    .filter((b): b is Extract<LandingBlock, { type: "form" }> => b.type === "form")
+    .map((b) => b.props.formId)
+    .filter((id): id is string => !!id);
+
+  let formMap: Record<string, { id: string; fields: FormField[]; settings: FormSettings }> = {};
+
+  if (formIds.length > 0) {
+    const forms = await prisma.form.findMany({
+      where: { id: { in: formIds } },
+      select: { id: true, name: true, fields: true, settings: true },
+    });
+    formMap = Object.fromEntries(
+      forms.map((f) => [
+        f.id,
+        {
+          id: f.id,
+          name: f.name,
+          fields: Array.isArray(f.fields) ? (f.fields as unknown as FormField[]) : [],
+          settings: (f.settings ?? {}) as FormSettings,
+        },
+      ])
+    );
+  }
+
+  // Inject formDefinition into form blocks that have a formId.
+  const enrichedBlocks: LandingBlock[] = blocks.map((block) => {
+    if (block.type === "form" && block.props.formId) {
+      const def = formMap[block.props.formId];
+      if (def) {
+        return {
+          ...block,
+          props: { ...block.props, formDefinition: def },
+        } as LandingBlock;
+      }
+    }
+    return block;
+  });
+
+  return (
+    <PageRenderer
+      blocks={enrichedBlocks}
+      theme={theme}
+      landingPageId={page.id}
+      animated
+    />
+  );
 }

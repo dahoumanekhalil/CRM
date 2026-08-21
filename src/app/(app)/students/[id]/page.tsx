@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import type { RegistrationStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getStudentDetail } from "../actions";
+import { getTasksForEntity, listUsersForPicker } from "@/app/(app)/tasks/actions";
+import { TasksTab } from "@/components/shared/tasks-tab";
 import { StudentHeader } from "./student-header";
 import { StudentTabsView } from "./student-tabs";
 import { OverviewTab } from "./overview-tab";
@@ -75,7 +77,14 @@ export default async function StudentDetailPage({
   const student = await getStudentDetail(id);
   if (!student) notFound();
 
-  const upcomingSessions = await loadUpcomingSessions();
+  const [upcomingSessions, studentTasks, taskUsers] = await Promise.all([
+    loadUpcomingSessions(),
+    getTasksForEntity("Student", id),
+    listUsersForPicker(),
+  ]);
+  const openTaskCount = studentTasks.filter(
+    (t) => t.status !== "COMPLETED" && t.status !== "CANCELLED"
+  ).length;
 
   return (
     <>
@@ -83,7 +92,19 @@ export default async function StudentDetailPage({
       <div className="flex-1 p-6">
         <StudentTabsView
           student={student}
+          taskCount={openTaskCount}
           overviewSlot={<OverviewTab student={student} />}
+          tasksSlot={
+            <TasksTab
+              tasks={studentTasks}
+              users={taskUsers}
+              entityType="Student"
+              entityId={id}
+              entityLabel={
+                [student.firstName, student.lastName].filter(Boolean).join(" ") || "Student"
+              }
+            />
+          }
           registrationsSlot={<RegistrationsTab studentId={student.id} />}
           paymentsSlot={
             <PaymentsTab

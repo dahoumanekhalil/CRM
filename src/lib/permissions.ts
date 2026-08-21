@@ -83,6 +83,10 @@ export const PERMISSIONS = {
   "payments.view": FINANCE_AND_SALES,
   "payments.write": FINANCE_AND_SALES,
 
+  // Finance expenses — Admin, Manager, Finance only
+  "finance.view": ["ADMIN", "MANAGER", "FINANCE"] as const,
+  "finance.write": ["ADMIN", "FINANCE"] as const,
+
   // Insights
   "reports.view": MANAGERS,
 

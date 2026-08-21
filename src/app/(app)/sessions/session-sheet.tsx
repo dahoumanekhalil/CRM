@@ -163,7 +163,7 @@ export function SessionSheet(props: CreateProps | EditProps) {
         toast.error(res.error);
         return;
       }
-      toast.success(mode === "edit" ? "Session updated" : "Session created");
+      toast.success(mode === "edit" ? "Course run updated" : "Course run created");
       onOpenChange(false);
       router.refresh();
     });
@@ -178,12 +178,12 @@ export function SessionSheet(props: CreateProps | EditProps) {
       <SheetContent className="w-full sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>
-            {mode === "edit" ? "Edit session" : "New session"}
+            {mode === "edit" ? "Edit course run" : "New course run"}
           </SheetTitle>
           <SheetDescription>
             {mode === "edit"
               ? "Update dates, location, capacity or status."
-              : "A specific cohort of a course with real dates, location and capacity."}
+              : "A scheduled cohort with real dates, location, and capacity."}
           </SheetDescription>
         </SheetHeader>
 
@@ -238,7 +238,7 @@ export function SessionSheet(props: CreateProps | EditProps) {
                 name="title"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Session title</FormLabel>
+                    <FormLabel>Course run title</FormLabel>
                     <FormControl>
                       <Input
                         placeholder="Optional — e.g. Dubai · March cohort"
@@ -408,7 +408,7 @@ export function SessionSheet(props: CreateProps | EditProps) {
                   name="price"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Session price</FormLabel>
+                      <FormLabel>Course run price</FormLabel>
                       <FormControl>
                         <Input
                           type="number"

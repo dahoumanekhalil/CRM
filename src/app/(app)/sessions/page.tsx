@@ -8,7 +8,7 @@ import {
 import { listSessionsSchema } from "@/lib/schemas/session";
 import { SessionsClient } from "./sessions-client";
 
-export const metadata = { title: "Sessions" };
+export const metadata = { title: "Course Runs" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -47,8 +47,8 @@ export default async function SessionsPage({
   return (
     <>
       <PageHeader
-        eyebrow="Sessions"
-        title="All sessions"
+        eyebrow="Course Runs"
+        title="All course runs"
         description="Scheduled cohorts of your courses — dates, locations, capacity."
       />
       <div className="flex-1 space-y-4 p-6">

@@ -34,6 +34,7 @@ interface DataTableProps<TData, TValue> {
   rowSelection?: RowSelectionState;
   onRowSelectionChange?: React.Dispatch<React.SetStateAction<RowSelectionState>>;
   getRowId?: (row: TData) => string;
+  getRowClassName?: (row: TData) => string | undefined;
   className?: string;
 }
 
@@ -48,6 +49,7 @@ export function DataTable<TData, TValue>({
   rowSelection,
   onRowSelectionChange,
   getRowId,
+  getRowClassName,
   className,
 }: DataTableProps<TData, TValue>) {
   // Only include state fields that are actually controlled. Passing
@@ -126,7 +128,8 @@ export function DataTable<TData, TValue>({
                 onClick={() => onRowClick?.(row.original)}
                 className={cn(
                   "border-border/60",
-                  onRowClick && "cursor-pointer"
+                  onRowClick && "cursor-pointer",
+                  getRowClassName?.(row.original)
                 )}
               >
                 {row.getVisibleCells().map((cell) => (

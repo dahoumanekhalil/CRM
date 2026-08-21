@@ -284,3 +284,245 @@ function toIsoDate(d: Date): string {
 function pad(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }
+
+function fmtTime(d: Date): string {
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Role-specific dashboard data
+// ──────────────────────────────────────────────────────────────────────────────
+
+// --- Trainer ---
+
+export interface TrainerDashboardRow {
+  id: string;
+  name: string;
+  courseSlug: string;
+  startTime: string;
+  studentCount: number;
+}
+
+export interface TrainerDashboardData {
+  tomorrowSessions: TrainerDashboardRow[];
+  todayPresentMap: Record<string, number>; // sessionId → present count today
+}
+
+export async function getTrainerDashboardData(
+  todaySessionIds: string[]
+): Promise<TrainerDashboardData> {
+  const now = new Date();
+  const todayStart = startOfDay(now);
+  const tomorrowStart = new Date(todayStart.getTime() + 86_400_000);
+  const tomorrowEnd = endOfDay(tomorrowStart);
+
+  const [tomorrowRows, attendanceGroups] = await Promise.all([
+    prisma.courseSession.findMany({
+      where: {
+        startDate: { gte: tomorrowStart, lte: tomorrowEnd },
+        status: { notIn: ["CANCELLED", "DRAFT"] },
+      },
+      orderBy: { startDate: "asc" },
+      take: 8,
+      include: {
+        course: { select: { name: true, slug: true } },
+        _count: {
+          select: {
+            registrations: {
+              where: { status: { in: ["PENDING", "CONFIRMED", "ATTENDING"] } },
+            },
+          },
+        },
+      },
+    }),
+    todaySessionIds.length > 0
+      ? prisma.attendance.groupBy({
+          by: ["sessionId"],
+          where: {
+            sessionId: { in: todaySessionIds },
+            sessionDate: todayStart,
+            status: { in: ["PRESENT", "LATE"] },
+          },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const todayPresentMap: Record<string, number> = {};
+  for (const g of attendanceGroups) {
+    todayPresentMap[g.sessionId] = g._count._all;
+  }
+
+  return {
+    tomorrowSessions: tomorrowRows.map((s) => ({
+      id: s.id,
+      name: s.title?.trim() || s.course.name,
+      courseSlug: s.course.slug,
+      startTime: fmtTime(s.startDate),
+      studentCount: s._count.registrations,
+    })),
+    todayPresentMap,
+  };
+}
+
+// --- Finance ---
+
+export interface FinanceDashboardData {
+  pendingCount: number;
+  pendingByCurrency: Array<{ currency: string; total: number }>;
+  todayCount: number;
+  thisMonthRevenue: number;
+  lastMonthRevenue: number;
+  currency: string;
+}
+
+export async function getFinanceDashboardData(): Promise<FinanceDashboardData> {
+  const now = new Date();
+  const todayStart = startOfDay(now);
+  const todayEnd = endOfDay(now);
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+
+  const [pendingGroups, todayCount, thisMonthGroups, lastMonthGroups] = await Promise.all([
+    prisma.payment.groupBy({
+      by: ["currency"],
+      where: { status: "PENDING" },
+      _sum: { amount: true },
+      _count: { _all: true },
+    }),
+    prisma.payment.count({
+      where: { status: "COMPLETED", paidAt: { gte: todayStart, lte: todayEnd } },
+    }),
+    prisma.payment.groupBy({
+      by: ["currency"],
+      where: { status: "COMPLETED", paidAt: { gte: thisMonthStart } },
+      _sum: { amount: true },
+    }),
+    prisma.payment.groupBy({
+      by: ["currency"],
+      where: { status: "COMPLETED", paidAt: { gte: lastMonthStart, lte: lastMonthEnd } },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const pendingCount = pendingGroups.reduce((s, g) => s + g._count._all, 0);
+  const pendingByCurrency = pendingGroups
+    .map((g) => ({ currency: g.currency, total: Number(g._sum.amount?.toString() ?? "0") }))
+    .filter((g) => g.total > 0)
+    .sort((a, b) => b.total - a.total);
+
+  const topThisMonth = [...thisMonthGroups].sort(
+    (a, b) =>
+      Number(b._sum.amount?.toString() ?? "0") - Number(a._sum.amount?.toString() ?? "0")
+  )[0];
+  const topCurrency = topThisMonth?.currency ?? pendingByCurrency[0]?.currency ?? "DZD";
+  const thisMonthRevenue = Number(topThisMonth?._sum.amount?.toString() ?? "0");
+  const lastMonthRevenue = Number(
+    lastMonthGroups.find((g) => g.currency === topCurrency)?._sum.amount?.toString() ?? "0"
+  );
+
+  return {
+    pendingCount,
+    pendingByCurrency,
+    todayCount,
+    thisMonthRevenue,
+    lastMonthRevenue,
+    currency: topCurrency,
+  };
+}
+
+// --- Marketing ---
+
+export interface MarketingDashboardData {
+  publishedPages: number;
+  draftPages: number;
+  activeCampaigns: number;
+  newLeadsThisWeek: number;
+  leadsBySource: Array<{ source: string; count: number }>;
+}
+
+export async function getMarketingDashboardData(): Promise<MarketingDashboardData> {
+  const weekStart = startOfDay(subDays(new Date(), 6));
+
+  const [publishedPages, draftPages, activeCampaigns, newLeadsThisWeek, sourceMix] =
+    await Promise.all([
+      prisma.landingPage.count({ where: { status: "PUBLISHED" } }),
+      prisma.landingPage.count({ where: { status: "DRAFT" } }),
+      prisma.campaign.count({ where: { status: { in: ["ACTIVE", "PAUSED"] } } }),
+      prisma.lead.count({ where: { createdAt: { gte: weekStart } } }),
+      prisma.lead.groupBy({
+        by: ["source"],
+        where: { createdAt: { gte: weekStart } },
+        _count: { _all: true },
+        orderBy: { _count: { source: "desc" } },
+        take: 5,
+      }),
+    ]);
+
+  return {
+    publishedPages,
+    draftPages,
+    activeCampaigns,
+    newLeadsThisWeek,
+    leadsBySource: sourceMix.map((r) => ({
+      source: r.source?.trim() || "Unknown",
+      count: r._count._all,
+    })),
+  };
+}
+
+// --- Sales Rep ---
+
+export interface SalesRepDashboardData {
+  totalMyLeads: number;
+  newThisWeek: number;
+  overdueFollowUps: number;
+  dueTodayFollowUps: number;
+  byStatus: Array<{ status: string; count: number }>;
+}
+
+export async function getSalesRepDashboardData(
+  userId: string
+): Promise<SalesRepDashboardData> {
+  const now = new Date();
+  const todayStart = startOfDay(now);
+  const todayEnd = endOfDay(now);
+  const weekStart = startOfDay(subDays(now, 6));
+
+  const [total, newThisWeek, overdue, dueToday, grouped] = await Promise.all([
+    prisma.lead.count({
+      where: { ownerId: userId, status: { notIn: ["LOST", "REGISTERED"] } },
+    }),
+    prisma.lead.count({ where: { ownerId: userId, createdAt: { gte: weekStart } } }),
+    prisma.lead.count({
+      where: {
+        ownerId: userId,
+        nextAction: { not: null },
+        nextActionDue: { lt: todayStart },
+        status: { notIn: ["LOST", "REGISTERED"] },
+      },
+    }),
+    prisma.lead.count({
+      where: {
+        ownerId: userId,
+        nextAction: { not: null },
+        nextActionDue: { gte: todayStart, lte: todayEnd },
+        status: { notIn: ["LOST", "REGISTERED"] },
+      },
+    }),
+    prisma.lead.groupBy({
+      by: ["status"],
+      where: { ownerId: userId, status: { notIn: ["LOST", "REGISTERED"] } },
+      _count: { _all: true },
+    }),
+  ]);
+
+  return {
+    totalMyLeads: total,
+    newThisWeek,
+    overdueFollowUps: overdue,
+    dueTodayFollowUps: dueToday,
+    byStatus: grouped.map((r) => ({ status: r.status, count: r._count._all })),
+  };
+}

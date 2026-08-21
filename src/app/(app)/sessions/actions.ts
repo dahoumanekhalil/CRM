@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { requirePermissionAction } from "@/lib/auth-guards";
 import {
   createSessionSchema,
   listSessionsSchema,
@@ -40,7 +41,7 @@ export async function createSession(
       error: parsed.error.issues[0]?.message ?? "Invalid input",
     };
   }
-  await requireSession();
+  await requirePermissionAction("sessions.write");
   const d = parsed.data;
   const emptyToNull = (v: string) => (v.trim() === "" ? null : v);
 
@@ -91,7 +92,7 @@ export async function updateSession(
       error: parsed.error.issues[0]?.message ?? "Invalid input",
     };
   }
-  await requireSession();
+  await requirePermissionAction("sessions.write");
   const d = parsed.data;
   const emptyToNull = (v: string) => (v.trim() === "" ? null : v);
 
@@ -140,7 +141,7 @@ export async function setSessionStatus(
   id: string,
   status: SessionStatus
 ): Promise<Result<{ id: string }>> {
-  await requireSession();
+  await requirePermissionAction("sessions.write");
   const existing = await prisma.courseSession.findUnique({
     where: { id },
     select: { course: { select: { slug: true } } },
@@ -156,7 +157,7 @@ export async function setSessionStatus(
 }
 
 export async function deleteSession(id: string): Promise<Result<null>> {
-  await requireSession();
+  await requirePermissionAction("sessions.write");
   const existing = await prisma.courseSession.findUnique({
     where: { id },
     select: { course: { select: { slug: true } } },

@@ -17,9 +17,11 @@ function initials(first: string, last: string | null): string {
 export function LeadHeader({
   lead,
   sessionsForCourse,
+  canAssign = false,
 }: {
   lead: LeadDetail;
   sessionsForCourse: SessionForConvert[];
+  canAssign?: boolean;
 }) {
   const fullName =
     [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "Unnamed lead";
@@ -107,7 +109,7 @@ export function LeadHeader({
           </div>
         </div>
 
-        <LeadHeaderActions lead={lead} sessionsForCourse={sessionsForCourse} />
+        <LeadHeaderActions lead={lead} sessionsForCourse={sessionsForCourse} canAssign={canAssign} />
       </div>
     </header>
   );

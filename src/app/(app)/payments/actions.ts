@@ -12,6 +12,7 @@ import {
   updatePaymentSchema,
   type CreatePaymentInput,
   type ListPaymentsInput,
+  type PaymentMethod,
   type PaymentStatus,
   type UpdatePaymentInput,
 } from "@/lib/schemas/payment";
@@ -108,6 +109,36 @@ export async function createPayment(
             entityId: created.id,
           });
         }
+      })();
+    }
+
+    // Notify the Sales rep who owns this student when a completed payment is recorded.
+    if (d.status === "COMPLETED") {
+      void (async () => {
+        const student = await prisma.student.findUnique({
+          where: { id: d.studentId },
+          select: {
+            firstName: true,
+            lastName: true,
+            leads: { select: { ownerId: true }, orderBy: { createdAt: "desc" }, take: 1 },
+          },
+        });
+        const ownerId = student?.leads[0]?.ownerId ?? null;
+        if (!ownerId) return;
+        const name = [student?.firstName, student?.lastName].filter(Boolean).join(" ") || "Student";
+        NotificationService.send({
+          recipientId: ownerId,
+          type: "payment.recorded",
+          payload: {
+            title: "Payment recorded",
+            body: `${name} — ${Number(d.amount).toLocaleString()} ${d.currency} — Paid`,
+            studentName: name,
+            amount: String(d.amount),
+            currency: d.currency,
+          },
+          entityType: "Payment",
+          entityId: created.id,
+        });
       })();
     }
 
@@ -430,6 +461,38 @@ export type CoursePaymentRow = Awaited<
   ReturnType<typeof getPaymentsForCourse>
 >[number];
 
+// Payments scoped to a single session.
+export async function getPaymentsForSession(sessionId: string) {
+  await requireViewPayments();
+  const rows = await prisma.payment.findMany({
+    where: { registration: { sessionId } },
+    orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+    take: 500,
+    include: {
+      student: {
+        select: { id: true, firstName: true, lastName: true, email: true },
+      },
+      registration: {
+        select: { id: true, agreedPrice: true },
+      },
+    },
+  });
+  return rows.map((p) => ({
+    ...p,
+    amount: serializeAmount(p.amount),
+    registration: p.registration
+      ? {
+          ...p.registration,
+          agreedPrice: p.registration.agreedPrice != null
+            ? Number(String(p.registration.agreedPrice))
+            : null,
+        }
+      : null,
+  }));
+}
+
+export type SessionPaymentRow = Awaited<ReturnType<typeof getPaymentsForSession>>[number];
+
 // Payment summary for a specific registration — shows agreed price, total paid, remaining balance.
 export async function getRegistrationPaymentSummary(registrationId: string) {
   await requireViewPayments();
@@ -606,4 +669,85 @@ export async function getPaymentSummariesForStudent(studentId: string) {
       paymentStatus: "UNPAID" | "PARTIALLY_PAID" | "FULLY_PAID";
     }
   >;
+}
+
+// Quick payment recorder for the Lead Drawer — avoids the full payment form.
+// SALES: restricted to registrations from their own leads.
+export async function createPaymentForRegistration(
+  registrationId: string,
+  input: {
+    amount: number;
+    method: PaymentMethod;
+    reference: string;
+    notes: string;
+  }
+): Promise<Result<RegistrationPaymentSummary>> {
+  const authSession = await requireWritePayments();
+
+  const reg = await prisma.registration.findUnique({
+    where: { id: registrationId },
+    select: { id: true, studentId: true, leadId: true },
+  });
+  if (!reg) return { ok: false, error: "Registration not found." };
+
+  if (authSession.user.role === "SALES" && reg.leadId) {
+    const ownedLead = await prisma.lead.findFirst({
+      where: { id: reg.leadId, ownerId: authSession.user.id },
+      select: { id: true },
+    });
+    if (!ownedLead) {
+      return { ok: false, error: "You can only record payments for your own leads." };
+    }
+  }
+
+  if (!Number.isFinite(input.amount) || input.amount <= 0) {
+    return { ok: false, error: "Amount must be greater than zero." };
+  }
+
+  const emptyToNull = (v: string) => (v.trim() === "" ? null : v);
+
+  try {
+    const created = await prisma.payment.create({
+      data: {
+        studentId: reg.studentId,
+        registrationId,
+        amount: input.amount,
+        currency: "DZD",
+        method: input.method,
+        status: "COMPLETED",
+        reference: emptyToNull(input.reference),
+        notes: emptyToNull(input.notes),
+        paidAt: new Date(),
+        recordedById: authSession.user.id,
+      },
+      select: { id: true },
+    });
+
+    void recordActivity({
+      type: "payment.recorded",
+      entity: "Student",
+      entityId: reg.studentId,
+      userId: authSession.user.id,
+      meta: {
+        paymentId: created.id,
+        amount: input.amount,
+        currency: "DZD",
+        method: input.method,
+        registrationId,
+      },
+    });
+
+    revalidatePath("/payments");
+    revalidatePath(`/students/${reg.studentId}`);
+    if (reg.leadId) revalidatePath(`/leads/${reg.leadId}`);
+
+    const summary = await getRegistrationPaymentSummary(registrationId);
+    if (!summary) {
+      return { ok: false, error: "Payment recorded but summary unavailable." };
+    }
+    return { ok: true, data: summary };
+  } catch (err) {
+    console.error("createPaymentForRegistration failed", err);
+    return { ok: false, error: "Couldn't record the payment. Please try again." };
+  }
 }

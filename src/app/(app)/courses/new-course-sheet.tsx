@@ -263,7 +263,7 @@ export function NewCourseSheet({
             {/* --- Pricing --- */}
             <FormSection
               title="Pricing"
-              description="Base price for a seat. Session-specific prices can override this later."
+              description="Base price for a seat. Course Run-specific prices can override this later."
             >
               <div className="grid grid-cols-3 gap-3">
                 <FormField

@@ -168,7 +168,7 @@ function RowActions({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="icon" variant="ghost" className="size-7">
+          <Button size="icon" variant="ghost" aria-label="Task actions" className="size-7">
             <MoreHorizontal className="size-4" />
           </Button>
         </DropdownMenuTrigger>

@@ -8,7 +8,7 @@ import {
   PAYMENT_STATUSES,
 } from "@/lib/schemas/payment";
 
-const STATUS_FILTER = ["ALL", ...PAYMENT_STATUSES] as const;
+const STATUS_FILTER = ["ALL", ...PAYMENT_STATUSES, "OUTSTANDING"] as const;
 const METHOD_FILTER = ["ALL", ...PAYMENT_METHODS] as const;
 const SORT_KEYS = ["createdAt", "paidAt", "amount", "status"] as const;
 const SORT_DIRS = ["asc", "desc"] as const;

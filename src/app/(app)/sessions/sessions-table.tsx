@@ -85,7 +85,7 @@ export function SessionsTable({
     () => [
       {
         accessorKey: "title",
-        header: "Session",
+        header: "Course Run",
         cell: ({ row }) => {
           const s = row.original;
           const label = s.title?.trim() || s.course.name;
@@ -267,9 +267,9 @@ export function SessionsTable({
     ) : (
       <EmptyState
         icon={CalendarDays}
-        title="No sessions yet"
-        description="Sessions are scheduled instances of a course that students register for."
-        action={<Button onClick={onNewSession}>Create your first session</Button>}
+        title="No course runs yet"
+        description="Course runs are scheduled instances of a course that students register for."
+        action={<Button onClick={onNewSession}>Create your first course run</Button>}
         className="border-0 bg-transparent"
       />
     );

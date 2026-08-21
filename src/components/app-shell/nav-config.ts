@@ -1,7 +1,6 @@
 import {
   LayoutDashboard,
   CheckSquare,
-  Users,
   Users2,
   Contact,
   GraduationCap,
@@ -10,6 +9,7 @@ import {
   ClipboardCheck,
   Megaphone,
   Globe,
+  FileInput,
   Wallet,
   Receipt,
   BarChart3,
@@ -17,6 +17,7 @@ import {
   Bot,
   TrendingUp,
   Target,
+  ShoppingBag,
   type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/lib/permissions";
@@ -38,8 +39,7 @@ export type NavGroup = {
   items: NavItem[];
 };
 
-// Grouped, minimal navigation per DESIGN.md §6.
-// Do not overload — every item must earn its place.
+// Grouped, minimal navigation per DESIGN.md §6 and Phase 15 approved structure.
 export const navGroups: NavGroup[] = [
   {
     items: [
@@ -79,20 +79,17 @@ export const navGroups: NavGroup[] = [
         permission: "leads.view",
         built: true,
       },
+    ],
+  },
+  {
+    label: "CRM",
+    items: [
       {
         label: "Leads",
         href: "/leads",
         icon: Contact,
         matchPrefix: true,
         permission: "leads.view",
-        built: true,
-      },
-      {
-        label: "Customers",
-        href: "/customers",
-        icon: Users,
-        matchPrefix: true,
-        permission: "students.view",
         built: true,
       },
       {
@@ -117,7 +114,7 @@ export const navGroups: NavGroup[] = [
         built: true,
       },
       {
-        label: "Sessions",
+        label: "Course Runs",
         href: "/sessions",
         icon: CalendarDays,
         matchPrefix: true,
@@ -143,6 +140,35 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
+    label: "Finance",
+    items: [
+      {
+        label: "Payments",
+        href: "/payments",
+        icon: Wallet,
+        matchPrefix: true,
+        permission: "payments.view",
+        built: true,
+      },
+      {
+        label: "Expenses",
+        href: "/finance/expenses",
+        icon: ShoppingBag,
+        matchPrefix: true,
+        permission: "finance.view",
+        built: true,
+      },
+      {
+        label: "Financial Overview",
+        href: "/transactions",
+        icon: Receipt,
+        matchPrefix: true,
+        permission: "payments.view",
+        built: true,
+      },
+    ],
+  },
+  {
     label: "Marketing",
     items: [
       {
@@ -161,25 +187,12 @@ export const navGroups: NavGroup[] = [
         permission: "landing-pages.view",
         built: true,
       },
-    ],
-  },
-  {
-    label: "Finance",
-    items: [
       {
-        label: "Payments",
-        href: "/payments",
-        icon: Wallet,
+        label: "Forms",
+        href: "/landing-pages/forms",
+        icon: FileInput,
         matchPrefix: true,
-        permission: "payments.view",
-        built: true,
-      },
-      {
-        label: "Transactions",
-        href: "/transactions",
-        icon: Receipt,
-        matchPrefix: true,
-        permission: "payments.view",
+        permission: "landing-pages.view",
         built: true,
       },
     ],
@@ -203,22 +216,14 @@ export const navGroups: NavGroup[] = [
         label: "Settings",
         href: "/settings",
         icon: Settings,
-        matchPrefix: true,
+        matchPrefix: false,
         permission: "settings.view",
         built: true,
       },
       {
-        label: "Telegram Management",
+        label: "Telegram",
         href: "/settings/telegram",
         icon: Bot,
-        matchPrefix: true,
-        permission: "telegram.admin",
-        built: true,
-      },
-      {
-        label: "Telegram Analytics",
-        href: "/settings/telegram/analytics",
-        icon: BarChart3,
         matchPrefix: true,
         permission: "telegram.admin",
         built: true,

@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/auth";
+import { normalizeEmail } from "@/lib/string-utils";
 import { recordActivity } from "@/lib/activity";
+import { requirePermissionAction } from "@/lib/auth-guards";
 import {
   createStudentSchema,
   listStudentsSchema,
@@ -15,12 +16,6 @@ import {
 } from "@/lib/schemas/student";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
-
-async function requireSession() {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Not authenticated");
-  return session;
-}
 
 function emptyToNull(v: string): string | null {
   return v.trim() === "" ? null : v;
@@ -42,10 +37,10 @@ export async function createStudent(
       error: parsed.error.issues[0]?.message ?? "Invalid input",
     };
   }
-  await requireSession();
+  await requirePermissionAction("students.write");
   const d = parsed.data;
 
-  const email = emptyToNull(d.email);
+  const email = normalizeEmail(d.email) ?? emptyToNull(d.email);
 
   if (email) {
     const clash = await prisma.student.findUnique({
@@ -95,10 +90,10 @@ export async function updateStudent(
       error: parsed.error.issues[0]?.message ?? "Invalid input",
     };
   }
-  await requireSession();
+  await requirePermissionAction("students.write");
   const d = parsed.data;
 
-  const email = emptyToNull(d.email);
+  const email = normalizeEmail(d.email) ?? emptyToNull(d.email);
 
   if (email) {
     const clash = await prisma.student.findUnique({
@@ -141,7 +136,7 @@ export async function updateStudent(
 }
 
 export async function deleteStudent(id: string): Promise<Result<null>> {
-  await requireSession();
+  await requirePermissionAction("students.write");
   try {
     await prisma.student.delete({ where: { id } });
     revalidatePath("/students");
@@ -156,7 +151,7 @@ export async function updateStudentNotes(
   studentId: string,
   notes: string
 ): Promise<Result<null>> {
-  await requireSession();
+  await requirePermissionAction("students.write");
   const trimmed = notes.trim();
   try {
     await prisma.student.update({
@@ -174,7 +169,7 @@ export async function updateStudentNotes(
 
 export async function listStudents(input: ListStudentsInput) {
   const parsed = listStudentsSchema.parse(input);
-  await requireSession();
+  await requirePermissionAction("students.view");
 
   const where: Prisma.StudentWhereInput = {};
 
@@ -190,6 +185,13 @@ export async function listStudents(input: ListStudentsInput) {
 
   if (parsed.tag) where.tags = { has: parsed.tag };
 
+  if (parsed.paymentStatus === "paying") {
+    where.payments = { some: { status: "COMPLETED" } };
+  } else if (parsed.paymentStatus === "unpaid") {
+    where.registrations = { some: {} };
+    where.payments = { none: { status: "COMPLETED" } };
+  }
+
   const orderBy: Prisma.StudentOrderByWithRelationInput = {
     [parsed.sortBy]: parsed.sortDir,
   };
@@ -203,6 +205,15 @@ export async function listStudents(input: ListStudentsInput) {
       include: {
         _count: {
           select: { registrations: true, payments: true },
+        },
+        registrations: {
+          select: {
+            agreedPrice: true,
+            payments: {
+              where: { status: "COMPLETED" },
+              select: { amount: true },
+            },
+          },
         },
       },
     }),
@@ -223,7 +234,7 @@ export type StudentRow = Awaited<
 
 // Detail — the workspace page.
 export async function getStudentDetail(id: string) {
-  await requireSession();
+  await requirePermissionAction("students.view");
   const student = await prisma.student.findUnique({
     where: { id },
     include: {
@@ -253,7 +264,7 @@ export async function updateStudentNextAction(
     nextActionOwnerId: string | null;
   }
 ): Promise<Result<null>> {
-  const session = await requireSession();
+  const session = await requirePermissionAction("students.write");
   try {
     await prisma.student.update({
       where: { id },
@@ -271,7 +282,38 @@ export async function updateStudentNextAction(
       userId: session.user.id,
       meta: { action: data.nextAction },
     });
+
+    // Upsert a Task so the follow-up appears in /tasks.
+    const existingTask = await prisma.task.findFirst({
+      where: {
+        entityType: "Student",
+        entityId: id,
+        status: { notIn: ["COMPLETED", "CANCELLED"] },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    const taskPayload = {
+      title: data.nextAction.trim(),
+      dueDate: data.nextActionDue ? new Date(data.nextActionDue) : null,
+      ownerId: data.nextActionOwnerId || session.user.id,
+    };
+    if (existingTask) {
+      await prisma.task.update({ where: { id: existingTask.id }, data: taskPayload });
+    } else {
+      await prisma.task.create({
+        data: {
+          ...taskPayload,
+          status: "TODO",
+          priority: "NORMAL",
+          entityType: "Student",
+          entityId: id,
+        },
+      });
+    }
+
     revalidatePath(`/students/${id}`);
+    revalidatePath("/tasks");
     return { ok: true, data: null };
   } catch (err) {
     console.error("updateStudentNextAction failed", err);
@@ -280,7 +322,7 @@ export async function updateStudentNextAction(
 }
 
 export async function clearStudentNextAction(id: string): Promise<Result<null>> {
-  const session = await requireSession();
+  const session = await requirePermissionAction("students.write");
   try {
     await prisma.student.update({
       where: { id },
@@ -303,7 +345,7 @@ export async function clearStudentNextAction(id: string): Promise<Result<null>> 
 
 // Cheap picker — used by the register-student dialog in Task 10.
 export async function listStudentsForPicker(term: string) {
-  await requireSession();
+  await requirePermissionAction("students.view");
   const q = term.trim();
   const where: Prisma.StudentWhereInput =
     q.length < 2

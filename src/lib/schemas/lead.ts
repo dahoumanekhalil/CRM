@@ -2,9 +2,10 @@ import { z } from "zod";
 
 export const LEAD_STATUSES = [
   "NEW",
+  "ASSIGNED",
   "CONTACTED",
   "INTERESTED",
-  "FOLLOW_UP",
+  "FOLLOW_UP",  // legacy — kept in enum for DB compat; hidden from UI pickers
   "CONFIRMED",
   "REGISTERED",
   "LOST",
@@ -13,6 +14,21 @@ export const LEAD_STATUSES = [
 ] as const;
 
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
+
+// Statuses visible in UI pickers and filters — FOLLOW_UP excluded (migrated to INTERESTED + Task)
+export const VISIBLE_LEAD_STATUSES = [
+  "NEW",
+  "ASSIGNED",
+  "CONTACTED",
+  "INTERESTED",
+  "CONFIRMED",
+  "REGISTERED",
+  "LOST",
+  "NOT_INTERESTED",
+  "UNREACHABLE",
+] as const;
+
+export type VisibleLeadStatus = (typeof VISIBLE_LEAD_STATUSES)[number];
 
 // Fields the form control renders — always strings for input compatibility.
 // Empty strings are coerced to null server-side before writing to Prisma.
@@ -30,7 +46,7 @@ export const createLeadSchema = z.object({
     ),
   phone: z.string().trim().max(40).default(""),
   preferredCallTime: z.string().trim().max(100).default(""),
-  status: z.enum(LEAD_STATUSES).default("NEW"),
+  status: z.enum(VISIBLE_LEAD_STATUSES).default("NEW"),
   source: z.string().trim().max(80).default(""),
   notes: z.string().max(2000).default(""),
   tags: z.array(z.string().min(1).max(40)).max(20).default([]),

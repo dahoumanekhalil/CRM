@@ -39,9 +39,13 @@ export const updateStudentSchema = createStudentSchema.extend({
 });
 export type UpdateStudentInput = z.infer<typeof updateStudentSchema>;
 
+export const PAYMENT_STATUS_FILTERS = ["all", "paying", "unpaid"] as const;
+export type PaymentStatusFilter = (typeof PAYMENT_STATUS_FILTERS)[number];
+
 export const listStudentsSchema = z.object({
   q: z.string().trim().max(120).optional(),
   tag: z.string().trim().max(40).optional(),
+  paymentStatus: z.enum(PAYMENT_STATUS_FILTERS).default("all"),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(5).max(200).default(25),
   sortBy: z.enum(["createdAt", "firstName", "lastName"]).default("createdAt"),

@@ -35,6 +35,7 @@ model User {
   madeAssignments        LeadAssignment[] @relation("LeadAssignmentBy")
   salesRegistrations     Registration[]   @relation("RegistrationSalesOwner")
   recordedPayments       Payment[]        @relation("PaymentRecordedBy")
+  recordedExpenses       Expense[]        @relation("ExpenseRecordedBy")
   nextActionLeads        Lead[]           @relation("LeadNextActionOwner")
   nextActionStudents     Student[]        @relation("StudentNextActionOwner")
   createdCourses    Course[]         @relation("CourseCreatedBy")
@@ -43,6 +44,7 @@ model User {
   communications    Communication[]  @relation("CommunicationSentBy")
   attendance        Attendance[]     @relation("AttendanceRecordedBy")
   landingPages      LandingPage[]    @relation("LandingPageCreatedBy")
+  forms             Form[]           @relation("FormCreatedBy")
   tasks             Task[]           @relation("TaskOwner")
   notifications     Notification[]
   telegramLinkTokens       TelegramLinkToken[]     @relation("TelegramLinkTokenEmployee")
@@ -140,6 +142,7 @@ model Lead {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
   lastContactedAt DateTime?
+  viewedByOwnerAt DateTime? // cleared when ownership changes; set on first open by owner
 
   owner              User?           @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   nextActionOwner    User?           @relation("LeadNextActionOwner", fields: [nextActionOwnerId], references: [id], onDelete: SetNull)
@@ -149,6 +152,7 @@ model Lead {
   student            Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
   communications     Communication[]
   assignments        LeadAssignment[]
+  registrations      Registration[]  @relation("RegistrationSourceLead")
 
   @@index([status])
   @@index([ownerId])
@@ -161,6 +165,7 @@ model Lead {
 
 enum LeadStatus {
   NEW
+  ASSIGNED
   CONTACTED
   INTERESTED
   FOLLOW_UP
@@ -269,6 +274,7 @@ model Course {
   sessions          CourseSession[]
   landingPages      LandingPage[]
   leads             Lead[]
+  expenses          Expense[]
 
   @@index([status])
   @@index([category])
@@ -311,6 +317,7 @@ model CourseSession {
   registrations Registration[]
   attendance    Attendance[]
   interestedLeads Lead[]       @relation("LeadInterestedSession")
+  expenses      Expense[]
 
   @@index([courseId])
   @@index([status])
@@ -335,6 +342,7 @@ model Registration {
   id           String             @id @default(cuid())
   studentId    String
   sessionId    String
+  leadId       String?            // set during lead conversion for attribution
   status       RegistrationStatus @default(PENDING)
   source       String?
   registeredAt DateTime           @default(now())
@@ -347,6 +355,7 @@ model Registration {
 
   student      Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
   session      CourseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  lead         Lead?         @relation("RegistrationSourceLead", fields: [leadId], references: [id], onDelete: SetNull)
   salesOwner   User?         @relation("RegistrationSalesOwner", fields: [salesOwnerId], references: [id], onDelete: SetNull)
   payments     Payment[]
   attendance   Attendance[]
@@ -354,6 +363,7 @@ model Registration {
   @@unique([studentId, sessionId])
   @@index([status])
   @@index([sessionId])
+  @@index([leadId])
   @@index([salesOwnerId])
   @@index([registeredAt])
 }
@@ -413,6 +423,7 @@ model Payment {
   registration Registration? @relation(fields: [registrationId], references: [id], onDelete: SetNull)
   recordedBy   User?         @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
 
+
   @@index([studentId])
   @@index([status])
   @@index([paidAt])
@@ -435,6 +446,60 @@ enum PaymentStatus {
   COMPLETED
   FAILED
   REFUNDED
+}
+
+// ==========================================================
+// Finance — expenses
+// ==========================================================
+
+model Expense {
+  id            String          @id @default(cuid())
+  title         String
+  description   String?         @db.Text
+  amount        Decimal         @db.Decimal(12, 2)
+  currency      String          @default("DZD")
+  category      ExpenseCategory
+  expenseDate   DateTime        @db.Date
+  paymentMethod PaymentMethod
+  courseId      String?
+  sessionId     String?
+  reference     String?
+  notes         String?         @db.Text
+  status        ExpenseStatus   @default(PENDING)
+  recordedById  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  course     Course?       @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  session    CourseSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  recordedBy User?         @relation("ExpenseRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@index([category])
+  @@index([expenseDate])
+  @@index([sessionId])
+  @@index([courseId])
+  @@index([status])
+}
+
+enum ExpenseCategory {
+  HALL_CLEANING
+  FOOD_MEALS
+  TRAINING_MATERIALS
+  CLASSROOM_PREPARATION
+  CONSUMABLES
+  VENUE_COSTS
+  TRANSPORTATION
+  INSTRUCTOR_COSTS
+  MARKETING
+  UTILITIES
+  OTHER
+}
+
+enum ExpenseStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
 }
 
 // ==========================================================
@@ -574,6 +639,38 @@ model LandingPageTemplate {
   createdAt DateTime @default(now())
 
   pages LandingPage[]
+}
+
+// ==========================================================
+// Forms — reusable form builder for landing pages & external sites
+// ==========================================================
+
+model Form {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  fields      Json     @default("[]")  // FormField[]
+  settings    Json     @default("{}")  // FormSettings
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  createdBy   User?          @relation("FormCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  submissions FormSubmission[]
+
+  @@index([createdAt])
+}
+
+model FormSubmission {
+  id        String   @id @default(cuid())
+  formId    String
+  data      Json                  // { fieldId: value, ... }
+  metadata  Json?                 // { ip, userAgent, origin, utmSource, ... }
+  createdAt DateTime @default(now())
+
+  form Form @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId, createdAt])
 }
 
 // ==========================================================

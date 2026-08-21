@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { hasPermission } from "@/lib/permissions";
 import { getLeadDetail, listLeadsUsers, listSalesTeam, getLeadAssignmentHistory } from "../actions";
+import { getTasksForEntity, listUsersForPicker } from "@/app/(app)/tasks/actions";
+import { TasksTab } from "@/components/shared/tasks-tab";
 import { LeadHeader } from "./lead-header";
 import { LeadTabsView } from "./lead-tabs";
 import { OverviewTab } from "./overview-tab";
@@ -85,15 +87,23 @@ export default async function LeadDetailPage({
   ]);
   if (!lead) notFound();
 
-  const sessionsForCourse = await loadSessionsForConvert(lead.courseId);
+  const [sessionsForCourse, leadTasks, taskUsers] = await Promise.all([
+    loadSessionsForConvert(lead.courseId),
+    getTasksForEntity("Lead", id),
+    listUsersForPicker(),
+  ]);
   const interestedSession = lead.interestedSession ?? null;
+  const openTaskCount = leadTasks.filter(
+    (t) => t.status !== "COMPLETED" && t.status !== "CANCELLED"
+  ).length;
 
   return (
     <>
-      <LeadHeader lead={lead} sessionsForCourse={sessionsForCourse} />
+      <LeadHeader lead={lead} sessionsForCourse={sessionsForCourse} canAssign={canAssign} />
       <div className="flex-1 p-6">
         <LeadTabsView
           lead={lead}
+          taskCount={openTaskCount}
           overviewSlot={
             <OverviewTab
               lead={lead}
@@ -102,6 +112,15 @@ export default async function LeadDetailPage({
               canAssign={canAssign}
               assignmentHistory={assignmentHistory}
               interestedSession={interestedSession}
+            />
+          }
+          tasksSlot={
+            <TasksTab
+              tasks={leadTasks}
+              users={taskUsers}
+              entityType="Lead"
+              entityId={id}
+              entityLabel={[lead.firstName, lead.lastName].filter(Boolean).join(" ") || "Lead"}
             />
           }
           communicationsSlot={<LeadCommunicationsTab leadId={lead.id} />}

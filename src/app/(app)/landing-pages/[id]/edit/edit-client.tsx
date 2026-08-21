@@ -32,6 +32,7 @@ import { Canvas } from "./canvas";
 import { Inspector } from "./inspector";
 import { SaveStatus } from "./save-status";
 import { useAutosave } from "./use-autosave";
+import { FormsProvider, type FormPickerItem } from "./forms-context";
 
 type Device = "desktop" | "tablet" | "mobile";
 
@@ -50,15 +51,19 @@ export function EditClient({
   page,
   blocks,
   theme,
+  forms = [],
 }: {
   page: PageInfo;
   blocks: LandingBlock[];
   theme: Theme;
+  forms?: FormPickerItem[];
 }) {
   return (
-    <EditorProvider initialBlocks={blocks} initialTheme={theme}>
-      <EditorLayout page={page} />
-    </EditorProvider>
+    <FormsProvider forms={forms}>
+      <EditorProvider initialBlocks={blocks} initialTheme={theme}>
+        <EditorLayout page={page} />
+      </EditorProvider>
+    </FormsProvider>
   );
 }
 

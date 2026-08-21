@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useQueryStates } from "nuqs";
 import { format } from "date-fns";
-import { CalendarCheck2, CalendarDays, ClipboardCheck, MapPin, X } from "lucide-react";
+import { CalendarCheck2, CalendarDays, ClipboardCheck, MapPin, User, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/primitives/search-input";
@@ -284,6 +284,14 @@ function SessionRow({
                 <span aria-hidden className="opacity-40">·</span>
                 <span className="inline-flex items-center gap-1">
                   <MapPin className="size-3" /> {where}
+                </span>
+              </>
+            ) : null}
+            {row.instructorName ? (
+              <>
+                <span aria-hidden className="opacity-40">·</span>
+                <span className="inline-flex items-center gap-1">
+                  <User className="size-3" /> {row.instructorName}
                 </span>
               </>
             ) : null}

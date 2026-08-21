@@ -1,11 +1,17 @@
 import Link from "next/link";
 import { format } from "date-fns";
-import { CalendarDays, ClipboardList, GraduationCap } from "lucide-react";
+import { CalendarDays, ClipboardList, GraduationCap, Wallet } from "lucide-react";
 
 import { EmptyState } from "@/components/primitives/empty-state";
 import { StatusBadge } from "@/components/primitives/status-badge";
 import { cn } from "@/lib/utils";
 import { getRegistrationsForCourse } from "@/app/(app)/registrations/actions";
+import { auth } from "@/auth";
+import { hasPermission } from "@/lib/permissions";
+
+function formatMoney(n: number) {
+  return `${n.toLocaleString("fr-DZ")} DA`;
+}
 
 function CapacityBar({ filled, capacity }: { filled: number; capacity: number }) {
   const pct = capacity > 0 ? Math.min((filled / capacity) * 100, 100) : 0;
@@ -59,6 +65,8 @@ export async function RegistrationsTab({
   activeRegistrations?: number;
   totalCapacity?: number;
 }) {
+  const session = await auth();
+  const canViewPayments = hasPermission(session?.user?.role, "payments.view");
   const rows = await getRegistrationsForCourse(courseId);
 
   if (rows.length === 0) {
@@ -66,7 +74,7 @@ export async function RegistrationsTab({
       <EmptyState
         icon={ClipboardList}
         title="No registrations yet"
-        description="Registrations appear here once a student books a session. Register someone from the Sessions tab or directly from their profile."
+        description="Registrations appear here once a student books a course run. Register someone from the Course Runs tab or directly from their profile."
       />
     );
   }
@@ -135,6 +143,36 @@ export async function RegistrationsTab({
                       </>
                     ) : null}
                   </div>
+                  {/* Payment summary — finance/sales/admin only */}
+                  {canViewPayments && r.paymentSummary.agreedPrice > 0 ? (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pt-0.5">
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <Wallet className="size-3 shrink-0" />
+                        <span className="tabular-nums font-medium">
+                          {formatMoney(r.paymentSummary.totalPaid)}
+                        </span>
+                        {" / "}
+                        <span className="tabular-nums">
+                          {formatMoney(r.paymentSummary.agreedPrice)}
+                        </span>
+                      </span>
+                      {r.paymentSummary.paymentStatus === "UNPAID" && (
+                        <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-xs font-medium text-destructive">
+                          Unpaid
+                        </span>
+                      )}
+                      {r.paymentSummary.paymentStatus === "PARTIALLY_PAID" && (
+                        <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                          {formatMoney(r.paymentSummary.remaining)} remaining
+                        </span>
+                      )}
+                      {r.paymentSummary.paymentStatus === "FULLY_PAID" && (
+                        <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                          Paid in full
+                        </span>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <div className="text-end text-xs tabular-nums text-muted-foreground">

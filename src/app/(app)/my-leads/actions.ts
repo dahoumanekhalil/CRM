@@ -16,6 +16,7 @@ const LEAD_SELECT = {
   lastContactedAt: true,
   nextAction: true,
   nextActionDue: true,
+  assignedAt: true,
   createdAt: true,
   course: { select: { id: true, name: true, slug: true } },
 } as const;
@@ -36,9 +37,10 @@ export type MyLeadsWorkspace = {
 
 const ACTIVE_STATUSES: LeadStatus[] = [
   "NEW",
+  "ASSIGNED",
   "CONTACTED",
   "INTERESTED",
-  "FOLLOW_UP",
+  "FOLLOW_UP",   // legacy — included so pre-migration records still surface
   "CONFIRMED",
 ];
 
@@ -69,7 +71,7 @@ export async function getMyLeadsWorkspace(): Promise<MyLeadsWorkspace> {
       select: LEAD_SELECT,
     }),
     prisma.lead.findMany({
-      where: { ownerId: userId, status: "NEW", nextActionDue: null },
+      where: { ownerId: userId, status: { in: ["NEW", "ASSIGNED"] }, nextActionDue: null },
       orderBy: [{ isHighPriority: "desc" }, { createdAt: "desc" }],
       take: 20,
       select: LEAD_SELECT,
@@ -86,6 +88,18 @@ export async function getMyLeadsWorkspace(): Promise<MyLeadsWorkspace> {
   const totalActive = (countResults as number[]).reduce((a, b) => a + b, 0);
 
   return { overdue, dueToday, newLeads, pipelineCounts, totalActive };
+}
+
+export async function markLeadViewed(leadId: string): Promise<void> {
+  const session = await requirePermissionAction("leads.view");
+  // Use $executeRaw because viewedByOwnerAt was added after the last prisma generate.
+  await prisma.$executeRaw`
+    UPDATE "Lead"
+    SET "viewedByOwnerAt" = NOW()
+    WHERE id = ${leadId}
+      AND "ownerId" = ${session.user.id}
+      AND "viewedByOwnerAt" IS NULL
+  `;
 }
 
 export async function setLeadStatusQuick(

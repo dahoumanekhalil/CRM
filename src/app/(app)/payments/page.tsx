@@ -2,7 +2,11 @@ import { PageHeader } from "@/components/primitives/page-header";
 import { Forbidden } from "@/components/primitives/forbidden";
 import { listPaymentsSchema } from "@/lib/schemas/payment";
 import { requirePermissionPage } from "@/lib/auth-guards";
-import { listPayments, listStudentsForPaymentPicker } from "./actions";
+import {
+  listPayments,
+  listStudentsForPaymentPicker,
+  getOutstandingBalances,
+} from "./actions";
 import { PaymentsClient } from "./payments-client";
 
 export const metadata = { title: "Payments" };
@@ -27,9 +31,12 @@ export default async function PaymentsPage({
   }
 
   const params = await searchParams;
+  const rawStatus = readString(params.status);
+  const isOutstandingView = rawStatus === "OUTSTANDING";
+
   const parsed = listPaymentsSchema.parse({
     q: readString(params.q),
-    status: readString(params.status),
+    status: isOutstandingView ? "ALL" : rawStatus,
     method: readString(params.method),
     studentId: readString(params.studentId),
     page: readString(params.page),
@@ -38,9 +45,12 @@ export default async function PaymentsPage({
     sortDir: readString(params.sortDir),
   });
 
-  const [{ rows, total }, students] = await Promise.all([
-    listPayments(parsed),
+  const [{ rows, total }, students, outstandingBalances] = await Promise.all([
+    isOutstandingView
+      ? Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 25 })
+      : listPayments(parsed),
     listStudentsForPaymentPicker(),
+    isOutstandingView ? getOutstandingBalances({ limit: 200 }) : Promise.resolve([]),
   ]);
 
   return (
@@ -51,7 +61,12 @@ export default async function PaymentsPage({
         description="Money received — recorded manually against students and sessions."
       />
       <div className="flex-1 space-y-4 p-6">
-        <PaymentsClient rows={rows} total={total} students={students} />
+        <PaymentsClient
+          rows={rows}
+          total={total}
+          students={students}
+          outstandingBalances={outstandingBalances}
+        />
       </div>
     </>
   );

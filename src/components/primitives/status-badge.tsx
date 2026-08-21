@@ -28,9 +28,11 @@ const toneStyles: Record<StatusTone, string> = {
 export const statusTone: Record<string, StatusTone> = {
   // Leads
   NEW: "info",
+  ASSIGNED: "info",
   CONTACTED: "brand",
   INTERESTED: "brand",
-  FOLLOW_UP: "warning",
+  FOLLOW_UP: "brand",   // legacy — renders as Interested
+  CONFIRMED: "brand",
   REGISTERED: "success",
   LOST: "neutral",
   NOT_INTERESTED: "neutral",
@@ -51,9 +53,8 @@ export const statusTone: Record<string, StatusTone> = {
   COMPLETED: "success",
   CANCELLED: "danger",
 
-  // Registrations (CONFIRMED covers both lead "confirmed" and registration "confirmed")
+  // Registrations
   PENDING: "warning",
-  CONFIRMED: "brand",
   ATTENDING: "brand",
   NO_SHOW: "danger",
 

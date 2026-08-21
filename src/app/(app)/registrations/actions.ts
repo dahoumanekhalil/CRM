@@ -91,41 +91,74 @@ export async function createRegistration(
   const session = await requirePermissionAction("registrations.write");
   const d = parsed.data;
 
-  // Dedupe — one registration per student per session (matches Prisma @@unique).
-  const existing = await prisma.registration.findUnique({
-    where: {
-      studentId_sessionId: {
-        studentId: d.studentId,
-        sessionId: d.sessionId,
-      },
-    },
-    select: { id: true },
-  });
-  if (existing) {
-    return {
-      ok: false,
-      error: "This student is already registered for that session.",
-    };
-  }
-
-  const cap = await assertCapacity(d.sessionId);
-  if (!cap.ok) return cap;
-
   const emptyToNull = (v: string) => (v.trim() === "" ? null : v);
 
-  try {
-    const created = await prisma.registration.create({
-      data: {
-        studentId: d.studentId,
-        sessionId: d.sessionId,
-        status: d.status,
-        source: emptyToNull(d.source),
-        notes: emptyToNull(d.notes),
-        confirmedAt: d.status === "CONFIRMED" ? new Date() : null,
-      },
-      select: { id: true, session: { select: { title: true, course: { select: { id: true, slug: true, name: true } } } } },
-    });
+  let created: { id: string; session: { title: string | null; course: { id: string; slug: string; name: string } } | null } | null = null;
 
+  try {
+    // Serializable transaction prevents concurrent over-registration (TOCTOU fix).
+    created = await prisma.$transaction(async (tx) => {
+      // Dedupe — one registration per student per session.
+      const existing = await tx.registration.findUnique({
+        where: { studentId_sessionId: { studentId: d.studentId, sessionId: d.sessionId } },
+        select: { id: true },
+      });
+      if (existing) {
+        throw Object.assign(new Error("DUPLICATE"), { code: "DUPLICATE" });
+      }
+
+      // Capacity check inside the same transaction — prevents race condition.
+      const courseSession = await tx.courseSession.findUnique({
+        where: { id: d.sessionId },
+        select: { capacity: true },
+      });
+      if (!courseSession) {
+        throw Object.assign(new Error("SESSION_NOT_FOUND"), { code: "SESSION_NOT_FOUND" });
+      }
+      const taken = await tx.registration.count({
+        where: { sessionId: d.sessionId, status: { in: CAPACITY_STATUSES } },
+      });
+      if (taken >= courseSession.capacity) {
+        throw Object.assign(
+          new Error(`Course run is at capacity (${taken}/${courseSession.capacity}).`),
+          { code: "FULL", taken, capacity: courseSession.capacity }
+        );
+      }
+
+      return tx.registration.create({
+        data: {
+          studentId: d.studentId,
+          sessionId: d.sessionId,
+          status: d.status,
+          source: emptyToNull(d.source),
+          notes: emptyToNull(d.notes),
+          confirmedAt: d.status === "CONFIRMED" ? new Date() : null,
+        },
+        select: { id: true, session: { select: { title: true, course: { select: { id: true, slug: true, name: true } } } } },
+      });
+    }, { isolationLevel: "Serializable" });
+  } catch (err: unknown) {
+    const e = err as { code?: string; taken?: number; capacity?: number; message?: string };
+    if (e?.code === "DUPLICATE") {
+      return { ok: false, error: "This student is already registered for that course run." };
+    }
+    if (e?.code === "SESSION_NOT_FOUND") {
+      return { ok: false, error: "Course run not found." };
+    }
+    if (e?.code === "FULL") {
+      return { ok: false, error: e.message ?? "Course run is at capacity." };
+    }
+    // Serialization failure — another transaction committed first; treat as full.
+    if ((e as { code?: string })?.code === "P2034") {
+      return { ok: false, error: "Course run just filled up. Please try another run." };
+    }
+    console.error("createRegistration failed", err);
+    return { ok: false, error: "Couldn't register the student. Please try again." };
+  }
+
+  if (!created) return { ok: false, error: "Couldn't register the student. Please try again." };
+
+  try {
     await bumpSessionStatusIfFull(d.sessionId);
 
     // Notify managers when a session reaches 90%+ capacity.
@@ -313,11 +346,39 @@ export async function getRegistrationsForCourse(courseId: string) {
           startDate: true,
           endDate: true,
           city: true,
+          price: true,
         },
+      },
+      payments: {
+        where: { status: "COMPLETED" },
+        select: { amount: true },
       },
     },
   });
-  return rows;
+
+  return rows.map((r) => {
+    const agreedPrice =
+      r.agreedPrice != null
+        ? Number(String(r.agreedPrice))
+        : Number(String(r.session.price ?? 0));
+    const totalPaid = r.payments.reduce(
+      (sum, p) => sum + Number(String(p.amount)),
+      0
+    );
+    const remaining = Math.max(0, agreedPrice - totalPaid);
+    const paymentStatus =
+      agreedPrice === 0
+        ? ("FULLY_PAID" as const)
+        : totalPaid === 0
+          ? ("UNPAID" as const)
+          : remaining === 0
+            ? ("FULLY_PAID" as const)
+            : ("PARTIALLY_PAID" as const);
+    return {
+      ...r,
+      paymentSummary: { agreedPrice, totalPaid, remaining, paymentStatus },
+    };
+  });
 }
 
 export type CourseRegistrationRow = Awaited<

@@ -43,7 +43,7 @@ export default async function AttendancePage({
       <PageHeader
         eyebrow="Operations"
         title="Attendance"
-        description="Take attendance for today's sessions, catch up on past ones, or scan what's coming."
+        description="Take attendance for today's course runs, catch up on past ones, or scan what's coming."
       />
       <div className="flex-1 space-y-4 p-6">
         <AttendanceClient rows={rows} courses={courses} todayRows={todayRows} />

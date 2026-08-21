@@ -7,9 +7,12 @@ import {
   MessagesSquare,
   Phone,
   TrendingUp,
+  UserSearch,
 } from "lucide-react";
+import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { prisma } from "@/lib/prisma";
+import { StatusBadge } from "@/components/primitives/status-badge";
 import type { StudentDetail } from "../actions";
 import { StudentNextActionSection } from "./next-action-section";
 
@@ -26,7 +29,7 @@ function formatCurrency(amount: number, currency: string): string {
 }
 
 export async function OverviewTab({ student }: { student: StudentDetail }) {
-  const [paymentGroups, coursesEnrolled, totalAttendance, attendedCount, pendingPayments, users] =
+  const [paymentGroups, coursesEnrolled, totalAttendance, attendedCount, pendingPayments, users, relatedLeads] =
     await Promise.all([
       // Completed payments by currency
       prisma.payment.groupBy({
@@ -62,6 +65,17 @@ export async function OverviewTab({ student }: { student: StudentDetail }) {
       prisma.user.findMany({
         select: { id: true, name: true, email: true },
         orderBy: { name: "asc" },
+      }),
+      // Leads linked to this student (conversion history)
+      prisma.lead.findMany({
+        where: { studentId: student.id },
+        select: {
+          id: true, firstName: true, lastName: true, status: true,
+          course: { select: { name: true } },
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 5,
       }),
     ]);
 
@@ -219,6 +233,46 @@ export async function OverviewTab({ student }: { student: StudentDetail }) {
             </div>
           </section>
         ) : null}
+
+        {/* Related leads — leads that converted into this student */}
+        <section className="rounded-xl border border-border/60 bg-card">
+          <header className="border-b border-border/60 px-5 py-3 flex items-center gap-2">
+            <UserSearch className="size-3.5 text-muted-foreground" />
+            <h2 className="text-sm font-semibold tracking-tight">Related Leads</h2>
+          </header>
+          {relatedLeads.length === 0 ? (
+            <p className="px-5 py-4 text-xs text-muted-foreground">
+              No leads linked to this student.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border/60">
+              {relatedLeads.map((l) => {
+                const leadName =
+                  [l.firstName, l.lastName].filter(Boolean).join(" ") || "Unnamed lead";
+                return (
+                  <li key={l.id} className="px-5 py-3">
+                    <Link
+                      href={`/leads/${l.id}`}
+                      className="flex items-start justify-between gap-2 group"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium group-hover:underline truncate">
+                          {leadName}
+                        </p>
+                        {l.course ? (
+                          <p className="text-xs text-muted-foreground truncate">
+                            {l.course.name}
+                          </p>
+                        ) : null}
+                      </div>
+                      <StatusBadge status={l.status} className="shrink-0 mt-0.5" />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
       </aside>
     </div>
   );

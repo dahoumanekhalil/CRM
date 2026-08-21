@@ -7,6 +7,8 @@ import { formatDistanceToNow } from "date-fns";
 import { GraduationCap, Mail, MoreHorizontal, Phone } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 
+import { cn } from "@/lib/utils";
+import { calcPaymentStatus } from "@/lib/payment-status";
 import { DataTable } from "@/components/tables/data-table";
 import { DataTableColumnHeader } from "@/components/tables/data-table-column-header";
 import { DataTablePagination } from "@/components/tables/data-table-pagination";
@@ -71,14 +73,30 @@ export function StudentsTable({
         cell: ({ row }) => {
           const s = row.original;
           const name = [s.firstName, s.lastName].filter(Boolean).join(" ") || "Unnamed";
+          const payDot = calcPaymentStatus(
+            (s as Record<string, unknown>).registrations as Parameters<typeof calcPaymentStatus>[0]
+          );
           return (
             <Link
               href={`/students/${s.id}`}
               className="group flex min-w-0 items-center gap-3"
             >
-              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                {initials(s.firstName, s.lastName)}
-              </span>
+              <div className="relative shrink-0">
+                <span className={cn(
+                  "grid size-9 place-items-center rounded-full text-xs font-semibold",
+                  payDot === "none"
+                    ? "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300"
+                    : "bg-primary/10 text-primary"
+                )}>
+                  {initials(s.firstName, s.lastName)}
+                </span>
+                {payDot === "full" && (
+                  <span className="absolute -bottom-0.5 -end-0.5 size-2.5 rounded-full border-2 border-background bg-green-500" title="Fully paid" />
+                )}
+                {payDot === "partial" && (
+                  <span className="absolute -bottom-0.5 -end-0.5 size-2.5 rounded-full border-2 border-background bg-blue-500" title="Partially paid" />
+                )}
+              </div>
               <div className="min-w-0 space-y-0.5">
                 <div className="truncate text-sm font-medium leading-tight group-hover:underline">
                   {name}
@@ -234,6 +252,14 @@ export function StudentsTable({
         data={rows}
         emptyState={emptyState}
         getRowId={(r) => r.id}
+        getRowClassName={(row) => {
+          const payDot = calcPaymentStatus(
+            (row as Record<string, unknown>).registrations as Parameters<typeof calcPaymentStatus>[0]
+          );
+          return payDot === "none" && row._count.registrations > 0
+            ? "bg-red-50/50 dark:bg-red-950/15"
+            : "";
+        }}
       />
       <DataTablePagination
         page={filters.page}

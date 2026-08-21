@@ -41,9 +41,20 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# helping files
-.CLAUDE.md
-.AGENTS.md
-.DESIGN.md
+# AI / dev-tool docs (not needed in repo)
+CLAUDE.md
+AGENTS.md
 DESIGN.md
 ./DESIGN.md
+LEVEL2.md
+SECURITY_AGENT.md
+TELEGRAM_IMPLEMENTATION.md
+DISCOVERY.md
+UX_AGENT.md
+WEBSCALE_CRM_IMPLEMENTATION_TASKS.md
+
+# One-time migration scripts
+prisma/migrate-*.ts
+
+# Raw data files used only during development
+algeria_cities.csv

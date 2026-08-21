@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   ExternalLink,
+  GitMerge,
   GraduationCap,
   MessageSquarePlus,
   MoreHorizontal,
@@ -34,13 +35,16 @@ import {
 import { CommunicationSheet } from "@/components/shared/communication-sheet";
 import { CallOutcomePrompt, savePendingCall } from "@/components/shared/call-outcome-prompt";
 import type { CommunicationType } from "@/lib/schemas/communication";
+import { MergeLeadDialog } from "./merge-lead-dialog";
 
 export function LeadHeaderActions({
   lead,
   sessionsForCourse,
+  canAssign = false,
 }: {
   lead: LeadDetail;
   sessionsForCourse: SessionForConvert[];
+  canAssign?: boolean;
 }) {
   const router = useRouter();
   const [editOpen, setEditOpen] = React.useState(false);
@@ -48,6 +52,7 @@ export function LeadHeaderActions({
   const [commOpen, setCommOpen] = React.useState(false);
   const [commType, setCommType] = React.useState<CommunicationType>("CALL");
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [mergeOpen, setMergeOpen] = React.useState(false);
   const [deleting, startDelete] = React.useTransition();
 
   const alreadyConverted = !!lead.studentId;
@@ -153,6 +158,14 @@ export function LeadHeaderActions({
             <DropdownMenuItem onClick={() => openLog("NOTE")}>
               <MessageSquarePlus /> Add note
             </DropdownMenuItem>
+            {canAssign ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setMergeOpen(true)}>
+                  <GitMerge /> Merge duplicate
+                </DropdownMenuItem>
+              </>
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => setDeleteOpen(true)}
@@ -195,6 +208,14 @@ export function LeadHeaderActions({
         onConfirm={handleDelete}
         pending={deleting}
       />
+      {canAssign ? (
+        <MergeLeadDialog
+          open={mergeOpen}
+          onOpenChange={setMergeOpen}
+          primaryLeadId={lead.id}
+          primaryName={fullName}
+        />
+      ) : null}
       <CallOutcomePrompt />
     </>
   );

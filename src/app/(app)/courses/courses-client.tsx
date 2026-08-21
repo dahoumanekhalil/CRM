@@ -3,7 +3,7 @@
 import * as React from "react";
 import { parseAsString, useQueryState } from "nuqs";
 import { CoursesToolbar } from "./courses-toolbar";
-import { CoursesTable } from "./courses-table";
+import { CoursesGrid } from "./courses-grid";
 import { NewCourseSheet } from "./new-course-sheet";
 import type { CourseRow } from "./actions";
 
@@ -25,7 +25,7 @@ export function CoursesClient({
   return (
     <>
       <CoursesToolbar total={total} onNewCourse={() => setSheetOpen(true)} />
-      <CoursesTable
+      <CoursesGrid
         rows={rows}
         total={total}
         onNewCourse={() => setSheetOpen(true)}

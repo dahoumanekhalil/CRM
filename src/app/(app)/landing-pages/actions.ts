@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { requirePermissionAction } from "@/lib/auth-guards";
 import { slugify } from "@/lib/slug";
 import {
   buildFromTemplate,
@@ -54,7 +55,7 @@ export async function createLandingPage(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const { courseId, templateId, title: customTitle } = parsed.data;
-  const session = await requireSession();
+  const session = await requirePermissionAction("landing-pages.write");
 
   const course = await prisma.course.findUnique({
     where: { id: courseId },
@@ -121,7 +122,7 @@ export async function createLandingPageAndRedirect(
 
 export async function listLandingPages(input: ListLandingPagesInput) {
   const parsed = listLandingPagesSchema.parse(input);
-  await requireSession();
+  await requirePermissionAction("landing-pages.view");
 
   const where: Prisma.LandingPageWhereInput = {};
   if (parsed.status !== "ALL") where.status = parsed.status;
@@ -165,7 +166,7 @@ export async function updateLandingPageSettings(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  await requireSession();
+  await requirePermissionAction("landing-pages.write");
   const { id, slug, ...rest } = parsed.data;
 
   const existing = await prisma.landingPage.findUnique({
@@ -213,7 +214,7 @@ export async function updateLandingPageContent(
       error: parsed.error.issues[0]?.message ?? "Invalid content",
     };
   }
-  await requireSession();
+  await requirePermissionAction("landing-pages.write");
   const { id, blocks, theme } = parsed.data;
 
   const existing = await prisma.landingPage.findUnique({
@@ -242,7 +243,7 @@ export async function setLandingPageStatus(
   id: string,
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
 ): Promise<Result<{ id: string }>> {
-  await requireSession();
+  await requirePermissionAction("landing-pages.write");
   const updated = await prisma.landingPage.update({
     where: { id },
     data: {
@@ -258,7 +259,7 @@ export async function setLandingPageStatus(
 }
 
 export async function deleteLandingPage(id: string): Promise<Result<null>> {
-  await requireSession();
+  await requirePermissionAction("landing-pages.write");
   const existing = await prisma.landingPage.findUnique({
     where: { id },
     select: { slug: true },

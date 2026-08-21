@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requirePermissionAction } from "@/lib/auth-guards";
 import {
@@ -16,15 +16,122 @@ import {
   convertLeadSchema,
   type ConvertLeadInput,
 } from "@/lib/schemas/registration";
-import { recordActivity } from "@/lib/activity";
+import { recordActivity, getActivitiesForEntity, type ActivityRow } from "@/lib/activity";
 import { NotificationService } from "@/lib/notifications/notification-service";
 import { NotificationTypes } from "@/lib/notifications/types";
+import { normalizeEmail, normalizePhone } from "@/lib/string-utils";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
+export type PotentialDuplicate = {
+  type: "lead" | "student";
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  matchedOn: "email" | "phone";
+};
+
+// Advisory-only duplicate detection — never blocks creation.
+export async function findPotentialDuplicates(
+  email: string | null,
+  phone: string | null
+): Promise<PotentialDuplicate[]> {
+  const normEmail = normalizeEmail(email);
+  const normPhone = normalizePhone(phone);
+  if (!normEmail && !normPhone) return [];
+
+  const results: PotentialDuplicate[] = [];
+
+  // Email matches — high confidence
+  if (normEmail) {
+    const [matchedLeads, matchedStudents] = await Promise.all([
+      prisma.lead.findMany({
+        where: { email: { equals: normEmail, mode: "insensitive" } },
+        select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+        take: 3,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.student.findMany({
+        where: { email: { equals: normEmail, mode: "insensitive" } },
+        select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+        take: 3,
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+    for (const l of matchedLeads) {
+      results.push({
+        type: "lead",
+        id: l.id,
+        name: [l.firstName, l.lastName].filter(Boolean).join(" "),
+        email: l.email,
+        phone: l.phone,
+        matchedOn: "email",
+      });
+    }
+    for (const s of matchedStudents) {
+      results.push({
+        type: "student",
+        id: s.id,
+        name: [s.firstName, s.lastName].filter(Boolean).join(" "),
+        email: s.email,
+        phone: s.phone,
+        matchedOn: "email",
+      });
+    }
+  }
+
+  // Phone matches — secondary signal (only if email didn't already match these)
+  if (normPhone) {
+    const seenLeadIds = new Set(results.filter(r => r.type === "lead").map(r => r.id));
+    const seenStudentIds = new Set(results.filter(r => r.type === "student").map(r => r.id));
+
+    const [phoneLeads, phoneStudents] = await Promise.all([
+      prisma.lead.findMany({
+        where: { phone: { contains: normPhone } },
+        select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+        take: 3,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.student.findMany({
+        where: { phone: { contains: normPhone } },
+        select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+        take: 3,
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+    for (const l of phoneLeads) {
+      if (!seenLeadIds.has(l.id)) {
+        results.push({
+          type: "lead",
+          id: l.id,
+          name: [l.firstName, l.lastName].filter(Boolean).join(" "),
+          email: l.email,
+          phone: l.phone,
+          matchedOn: "phone",
+        });
+      }
+    }
+    for (const s of phoneStudents) {
+      if (!seenStudentIds.has(s.id)) {
+        results.push({
+          type: "student",
+          id: s.id,
+          name: [s.firstName, s.lastName].filter(Boolean).join(" "),
+          email: s.email,
+          phone: s.phone,
+          matchedOn: "phone",
+        });
+      }
+    }
+  }
+
+  return results.slice(0, 5);
+}
+
 export async function createLead(
   input: CreateLeadInput
-): Promise<Result<{ id: string }>> {
+): Promise<Result<{ id: string; duplicates: PotentialDuplicate[] }>> {
   const parsed = createLeadSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -34,14 +141,16 @@ export async function createLead(
 
   const d = parsed.data;
   const emptyToNull = (v: string) => (v.trim() === "" ? null : v);
+  const email = normalizeEmail(d.email) ?? emptyToNull(d.email);
+  const phone = emptyToNull(d.phone);
 
   try {
     const created = await prisma.lead.create({
       data: {
         firstName: d.firstName,
         lastName: emptyToNull(d.lastName),
-        email: emptyToNull(d.email),
-        phone: emptyToNull(d.phone),
+        email,
+        phone,
         preferredCallTime: emptyToNull(d.preferredCallTime ?? "") as never,
         source: emptyToNull(d.source),
         notes: emptyToNull(d.notes),
@@ -63,7 +172,15 @@ export async function createLead(
     });
 
     revalidatePath("/leads");
-    return { ok: true, data: created };
+
+    // Advisory duplicate check — never blocks creation.
+    // Excludes the record we just created so it doesn't match itself.
+    const allDupes = await findPotentialDuplicates(email, phone);
+    const duplicates = allDupes.filter(
+      (d) => !(d.type === "lead" && d.id === created.id)
+    );
+
+    return { ok: true, data: { id: created.id, duplicates } };
   } catch (err) {
     console.error("createLead failed", err);
     return { ok: false, error: "We couldn't save the lead. Please try again." };
@@ -148,6 +265,19 @@ export async function listLeads(
           orderBy: { createdAt: "desc" },
           take: 1,
           select: { body: true, type: true, createdAt: true },
+        },
+        student: {
+          select: {
+            registrations: {
+              select: {
+                agreedPrice: true,
+                payments: {
+                  where: { status: "COMPLETED" },
+                  select: { amount: true },
+                },
+              },
+            },
+          },
         },
       },
     }),
@@ -240,8 +370,39 @@ export async function updateLeadNextAction(
         nextActionOwnerId: data.nextActionOwnerId || null,
       },
     });
+
+    // Upsert a Task so the follow-up appears in /tasks alongside all other work.
+    const existingTask = await prisma.task.findFirst({
+      where: {
+        entityType: "Lead",
+        entityId: leadId,
+        status: { notIn: ["COMPLETED", "CANCELLED"] },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    const taskPayload = {
+      title: data.nextAction.trim(),
+      dueDate: data.nextActionDue ? new Date(data.nextActionDue) : null,
+      ownerId: data.nextActionOwnerId || session.user.id,
+    };
+    if (existingTask) {
+      await prisma.task.update({ where: { id: existingTask.id }, data: taskPayload });
+    } else {
+      await prisma.task.create({
+        data: {
+          ...taskPayload,
+          status: "TODO",
+          priority: "NORMAL",
+          entityType: "Lead",
+          entityId: leadId,
+        },
+      });
+    }
+
     revalidatePath(`/leads/${leadId}`);
     revalidatePath("/leads");
+    revalidatePath("/tasks");
     return { ok: true, data: null };
   } catch (err) {
     console.error("updateLeadNextAction failed", err);
@@ -348,9 +509,10 @@ export async function convertLead(
   let reused = false;
 
   if (!studentId) {
-    if (lead.email) {
+    const normEmail = normalizeEmail(lead.email);
+    if (normEmail) {
       const existing = await prisma.student.findUnique({
-        where: { email: lead.email },
+        where: { email: normEmail },
         select: { id: true },
       });
       if (existing) {
@@ -365,7 +527,7 @@ export async function convertLead(
           data: {
             firstName: lead.firstName,
             lastName: lead.lastName,
-            email: lead.email,
+            email: normalizeEmail(lead.email),
             phone: lead.phone,
             notes: lead.notes,
             tags: lead.tags,
@@ -386,10 +548,13 @@ export async function convertLead(
   // Optionally register the student for a session in the same step.
   let registrationId: string | null = null;
   if (d.sessionId) {
+    const sessionId = d.sessionId; // narrow to string for use inside callbacks
+    const confirmedStudentId = studentId as string; // guaranteed non-null by this point
+
     // Guard capacity + dedupe by hand (we don't want to import the
     // registrations action here and create a server → server call).
     const courseSession = await prisma.courseSession.findUnique({
-      where: { id: d.sessionId },
+      where: { id: sessionId },
       select: {
         id: true,
         capacity: true,
@@ -398,43 +563,53 @@ export async function convertLead(
     });
     if (!courseSession) return { ok: false, error: "Session not found." };
 
-    const clash = await prisma.registration.findUnique({
-      where: {
-        studentId_sessionId: { studentId, sessionId: d.sessionId },
-      },
-      select: { id: true },
-    });
-    if (clash) {
-      registrationId = clash.id;
-    } else {
-      const taken = await prisma.registration.count({
-        where: {
-          sessionId: d.sessionId,
-          status: {
-            in: ["PENDING", "CONFIRMED", "ATTENDING", "COMPLETED"],
+    // Serializable transaction prevents concurrent over-registration (TOCTOU fix).
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const clash = await tx.registration.findUnique({
+          where: { studentId_sessionId: { studentId: confirmedStudentId, sessionId } },
+          select: { id: true },
+        });
+        if (clash) return { existingId: clash.id };
+
+        const taken = await tx.registration.count({
+          where: {
+            sessionId,
+            status: { in: ["PENDING", "CONFIRMED", "ATTENDING", "COMPLETED"] },
           },
-        },
-      });
-      if (taken >= courseSession.capacity) {
-        return {
-          ok: false,
-          error: `Session is at capacity (${taken}/${courseSession.capacity}).`,
-        };
+        });
+        if (taken >= courseSession.capacity) {
+          throw Object.assign(
+            new Error(`Course run is at capacity (${taken}/${courseSession.capacity}).`),
+            { code: "FULL" }
+          );
+        }
+
+        const reg = await tx.registration.create({
+          data: {
+            studentId: confirmedStudentId,
+            sessionId,
+            leadId: lead.id,
+            status: d.registrationStatus,
+            source: "Lead conversion",
+            notes: d.notes.trim() === "" ? null : d.notes,
+            confirmedAt: d.registrationStatus === "CONFIRMED" ? new Date() : null,
+            salesOwnerId: session.user.id,
+          },
+          select: { id: true },
+        });
+        return { newId: reg.id };
+      }, { isolationLevel: "Serializable" });
+
+      registrationId = result.existingId ?? result.newId ?? null;
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      if (e?.code === "FULL") return { ok: false, error: e.message ?? "Course run is at capacity." };
+      if ((e as { code?: string })?.code === "P2034") {
+        return { ok: false, error: "Course run just filled up. Please try another run." };
       }
-      const reg = await prisma.registration.create({
-        data: {
-          studentId,
-          sessionId: d.sessionId,
-          status: d.registrationStatus,
-          source: "Lead conversion",
-          notes: d.notes.trim() === "" ? null : d.notes,
-          confirmedAt:
-            d.registrationStatus === "CONFIRMED" ? new Date() : null,
-          salesOwnerId: session.user.id,
-        },
-        select: { id: true },
-      });
-      registrationId = reg.id;
+      console.error("convertLead: registration failed", err);
+      return { ok: false, error: "Couldn't register the student. Please try again." };
     }
 
     // Bump session status → FULL if we just filled it.
@@ -487,12 +662,21 @@ export async function convertLead(
   };
 }
 
+const VALID_LEAD_STATUSES = [
+  "NEW", "ASSIGNED", "CONTACTED", "INTERESTED", "CONFIRMED",
+  "REGISTERED", "LOST", "NOT_INTERESTED", "UNREACHABLE",
+] as const;
+type ValidLeadStatus = (typeof VALID_LEAD_STATUSES)[number];
+
 export async function bulkUpdateLeadStatus(
   ids: string[],
   status: string
 ): Promise<Result<{ count: number }>> {
   if (!ids.length) return { ok: false, error: "No leads selected." };
   if (ids.length > 500) return { ok: false, error: "Select at most 500 leads at a time." };
+  if (!(VALID_LEAD_STATUSES as readonly string[]).includes(status)) {
+    return { ok: false, error: "Invalid status value." };
+  }
   const session = await requirePermissionAction("leads.write");
   try {
     // SALES role: can only update leads assigned to them.
@@ -501,7 +685,7 @@ export async function bulkUpdateLeadStatus(
       : { id: { in: ids } };
     const result = await prisma.lead.updateMany({
       where,
-      data: { status: status as never },
+      data: { status: status as ValidLeadStatus },
     });
     revalidatePath("/leads");
     return { ok: true, data: { count: result.count } };
@@ -620,6 +804,15 @@ export async function updateLeadOwner(
 
   const now = new Date();
 
+  // Promote NEW → ASSIGNED when a lead gets its first owner.
+  // Never demote a lead that has already progressed beyond ASSIGNED.
+  const EARLY_STATUSES = new Set(["NEW", "ASSIGNED"]);
+  const leadForStatus = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { status: true },
+  });
+  const shouldPromote = newOwnerId && leadForStatus && EARLY_STATUSES.has(leadForStatus.status);
+
   try {
     await prisma.$transaction([
       prisma.lead.update({
@@ -628,6 +821,7 @@ export async function updateLeadOwner(
           ownerId: newOwnerId,
           assignedById: newOwnerId ? session.user.id : null,
           assignedAt: newOwnerId ? now : null,
+          ...(shouldPromote ? { status: "ASSIGNED" } : {}),
         },
         select: { id: true },
       }),
@@ -640,6 +834,12 @@ export async function updateLeadOwner(
         },
       }),
     ]);
+
+    // Reset viewed indicator so the new owner sees the "New" badge in their workspace.
+    // Raw SQL because viewedByOwnerAt was added after the last `prisma generate`.
+    if (newOwnerId !== lead.ownerId) {
+      await prisma.$executeRaw`UPDATE "Lead" SET "viewedByOwnerAt" = NULL WHERE id = ${leadId}`;
+    }
 
     void recordActivity({
       type: "lead.assigned",
@@ -763,8 +963,14 @@ export async function bulkAssignLeads(
 
   try {
     await prisma.$transaction(async (tx) => {
+      // Only promote leads that are still in early-pipeline stages.
       await tx.lead.updateMany({
-        where: { id: { in: leadIds } },
+        where: { id: { in: leadIds }, status: { in: ["NEW", "ASSIGNED"] } },
+        data: { ownerId: assigneeId, assignedById: session.user.id, assignedAt: now, status: "ASSIGNED" },
+      });
+      // Leads already past ASSIGNED keep their status but get the new owner.
+      await tx.lead.updateMany({
+        where: { id: { in: leadIds }, status: { notIn: ["NEW", "ASSIGNED"] } },
         data: { ownerId: assigneeId, assignedById: session.user.id, assignedAt: now },
       });
       await tx.leadAssignment.createMany({
@@ -806,6 +1012,13 @@ export async function bulkAssignLeads(
         },
       });
     }
+
+    // Reset viewed indicator for all bulk-assigned leads (best-effort).
+    try {
+      await prisma.$executeRaw(
+        Prisma.sql`UPDATE "Lead" SET "viewedByOwnerAt" = NULL WHERE id IN (${Prisma.join(leadIds)})`
+      );
+    } catch { /* non-critical */ }
 
     revalidatePath("/leads");
     return { ok: true, data: { assigned: leadIds.length } };
@@ -1069,3 +1282,419 @@ export async function getSalesManagerKpis() {
 }
 
 export type SalesManagerKpis = Awaited<ReturnType<typeof getSalesManagerKpis>>;
+
+// ── Lead Merge ─────────────────────────────────────────────────────────────────
+
+// Returns leads that could be duplicates of a given lead — for the merge dialog.
+export async function getLeadDuplicatesForMerge(leadId: string) {
+  await requirePermissionAction("leads.assign");
+
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { id: true, email: true, phone: true, firstName: true, lastName: true },
+  });
+  if (!lead) return [];
+
+  const dupes = await findPotentialDuplicates(lead.email, lead.phone);
+  // Return only leads (not students), excluding the lead itself
+  return dupes.filter((d) => d.type === "lead" && d.id !== leadId);
+}
+
+export async function mergeLeads(
+  primaryLeadId: string,
+  secondaryLeadId: string
+): Promise<Result<null>> {
+  const authSession = await requirePermissionAction("leads.assign");
+
+  if (primaryLeadId === secondaryLeadId) {
+    return { ok: false, error: "Cannot merge a lead with itself." };
+  }
+
+  const [primary, secondary] = await Promise.all([
+    prisma.lead.findUnique({
+      where: { id: primaryLeadId },
+      select: { id: true, firstName: true, lastName: true, studentId: true, notes: true },
+    }),
+    prisma.lead.findUnique({
+      where: { id: secondaryLeadId },
+      select: { id: true, firstName: true, lastName: true, studentId: true, notes: true },
+    }),
+  ]);
+
+  if (!primary) return { ok: false, error: "Primary lead not found." };
+  if (!secondary) return { ok: false, error: "Secondary lead not found." };
+
+  // Block if both leads have different converted students — staff must resolve manually.
+  if (
+    primary.studentId &&
+    secondary.studentId &&
+    primary.studentId !== secondary.studentId
+  ) {
+    return {
+      ok: false,
+      error:
+        "Both leads have different student profiles. Please unlink one before merging.",
+    };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Move communications from secondary → primary
+      await tx.communication.updateMany({
+        where: { leadId: secondaryLeadId },
+        data: { leadId: primaryLeadId },
+      });
+
+      // Move assignment history from secondary → primary
+      await tx.leadAssignment.updateMany({
+        where: { leadId: secondaryLeadId },
+        data: { leadId: primaryLeadId },
+      });
+
+      // Move registration attribution from secondary → primary
+      await tx.registration.updateMany({
+        where: { leadId: secondaryLeadId },
+        data: { leadId: primaryLeadId },
+      });
+
+      // Move activity log entries from secondary → primary
+      await tx.activity.updateMany({
+        where: { entity: "Lead", entityId: secondaryLeadId },
+        data: { entityId: primaryLeadId },
+      });
+
+      // If primary has no student but secondary does, inherit it
+      const inheritStudentId =
+        !primary.studentId && secondary.studentId ? secondary.studentId : undefined;
+      if (inheritStudentId) {
+        await tx.lead.update({
+          where: { id: primaryLeadId },
+          data: { studentId: inheritStudentId },
+        });
+      }
+
+      const secondaryName =
+        [secondary.firstName, secondary.lastName].filter(Boolean).join(" ") || secondaryLeadId;
+
+      // Soft-close the secondary lead
+      await tx.lead.update({
+        where: { id: secondaryLeadId },
+        data: {
+          status: "LOST",
+          notes: secondary.notes
+            ? `${secondary.notes}\n\n[Merged into ${primaryLeadId}]`
+            : `[Merged into ${primaryLeadId}]`,
+        },
+      });
+
+      // Record the merge event on the primary
+      await tx.activity.create({
+        data: {
+          type: "lead.merged",
+          entity: "Lead",
+          entityId: primaryLeadId,
+          userId: authSession.user.id,
+          meta: { secondaryLeadId, secondaryName },
+        },
+      });
+    });
+
+    revalidatePath("/leads");
+    revalidatePath(`/leads/${primaryLeadId}`);
+    revalidatePath(`/leads/${secondaryLeadId}`);
+    return { ok: true, data: null };
+  } catch (err) {
+    console.error("mergeLeads failed", err);
+    return { ok: false, error: "Couldn't merge the leads. Please try again." };
+  }
+}
+
+// ── Lead Drawer Data ───────────────────────────────────────────────────────────
+
+export type DrawerPaymentSummary = {
+  agreedPrice: number;
+  totalPaid: number;
+  remaining: number;
+  paymentStatus: "UNPAID" | "PARTIALLY_PAID" | "FULLY_PAID";
+};
+
+export type LeadDrawerData = {
+  notes: string | null;
+  recentActivity: ActivityRow[];
+  interestedSessionId: string | null;
+  registrationId: string | null;
+  paymentSummary: DrawerPaymentSummary | null;
+};
+
+function serializeDecimal(v: unknown): number {
+  const n = Number(String(v));
+  return Number.isFinite(n) ? n : 0;
+}
+
+export async function getLeadDrawerData(leadId: string): Promise<LeadDrawerData | null> {
+  const session = await requirePermissionAction("leads.view");
+
+  const where = session.user.role === "SALES"
+    ? { id: leadId, ownerId: session.user.id }
+    : { id: leadId };
+
+  const [lead, recentActivity, sessionRows, registration] = await Promise.all([
+    prisma.lead.findUnique({ where, select: { notes: true } }),
+    getActivitiesForEntity("Lead", leadId, 6),
+    prisma.$queryRaw<Array<{ interestedSessionId: string | null }>>`
+      SELECT "interestedSessionId" FROM "Lead" WHERE id = ${leadId}
+    `,
+    prisma.registration.findFirst({
+      where: { leadId },
+      orderBy: { registeredAt: "desc" },
+      select: {
+        id: true,
+        agreedPrice: true,
+        session: { select: { price: true } },
+        payments: {
+          where: { status: "COMPLETED" },
+          select: { amount: true },
+        },
+      },
+    }),
+  ]);
+
+  if (!lead) return null;
+
+  let paymentSummary: DrawerPaymentSummary | null = null;
+  if (registration) {
+    const agreedPrice =
+      registration.agreedPrice != null
+        ? serializeDecimal(registration.agreedPrice)
+        : serializeDecimal(registration.session.price);
+    const totalPaid = registration.payments.reduce(
+      (sum, p) => sum + serializeDecimal(p.amount),
+      0
+    );
+    const remaining = Math.max(0, agreedPrice - totalPaid);
+    paymentSummary = {
+      agreedPrice,
+      totalPaid,
+      remaining,
+      paymentStatus:
+        agreedPrice === 0
+          ? "FULLY_PAID"
+          : totalPaid === 0
+            ? "UNPAID"
+            : remaining === 0
+              ? "FULLY_PAID"
+              : "PARTIALLY_PAID",
+    };
+  }
+
+  return {
+    notes: lead.notes,
+    recentActivity,
+    interestedSessionId: sessionRows[0]?.interestedSessionId ?? null,
+    registrationId: registration?.id ?? null,
+    paymentSummary,
+  };
+}
+
+// Update the course a lead is interested in.
+export async function updateLeadCourse(
+  leadId: string,
+  courseId: string | null,
+): Promise<Result<null>> {
+  const session = await requirePermissionAction("leads.write");
+
+  const lead = await prisma.lead.findUnique({
+    where: session.user.role === "SALES"
+      ? { id: leadId, ownerId: session.user.id }
+      : { id: leadId },
+    select: { id: true },
+  });
+  if (!lead) return { ok: false, error: "Lead not found or access denied." };
+
+  if (courseId) {
+    const course = await prisma.course.findUnique({ where: { id: courseId }, select: { id: true } });
+    if (!course) return { ok: false, error: "Course not found." };
+  }
+
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { courseId },
+  });
+
+  void recordActivity({
+    type: "lead.updated",
+    entity: "Lead",
+    entityId: leadId,
+    userId: session.user.id,
+    meta: { field: "courseId", to: courseId },
+  });
+
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${leadId}`);
+  return { ok: true, data: null };
+}
+
+// Quick status update for a single lead (scoped to owner for SALES role).
+export async function updateLeadStatusDirect(
+  leadId: string,
+  status: string
+): Promise<Result<null>> {
+  const session = await requirePermissionAction("leads.write");
+  const oldLead = await prisma.lead.findUnique({
+    where: session.user.role === "SALES"
+      ? { id: leadId, ownerId: session.user.id }
+      : { id: leadId },
+    select: { status: true },
+  });
+  if (!oldLead) return { ok: false, error: "Lead not found or access denied." };
+
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { status: status as ValidLeadStatus },
+  });
+
+  void recordActivity({
+    type: "lead.status_changed",
+    entity: "Lead",
+    entityId: leadId,
+    userId: session.user.id,
+    meta: { from: oldLead.status, to: status },
+  });
+
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/my-leads");
+  return { ok: true, data: null };
+}
+
+// ── Registration from Drawer (Task 5.4) ───────────────────────────────────────
+
+export async function createRegistrationFromLead(
+  leadId: string,
+  sessionId: string,
+  agreedPrice: number | null,
+): Promise<Result<{ registrationId: string; studentId: string }>> {
+  const authSession = await requirePermissionAction("leads.write");
+
+  const lead = await prisma.lead.findUnique({
+    where: authSession.user.role === "SALES"
+      ? { id: leadId, ownerId: authSession.user.id }
+      : { id: leadId },
+    select: {
+      id: true, firstName: true, lastName: true, email: true, phone: true,
+      notes: true, tags: true, studentId: true,
+    },
+  });
+  if (!lead) return { ok: false, error: "Lead not found or access denied." };
+  if (!lead.firstName) return { ok: false, error: "Lead needs at least a first name." };
+
+  const courseSession = await prisma.courseSession.findUnique({
+    where: { id: sessionId },
+    select: { id: true, capacity: true, course: { select: { slug: true, name: true } } },
+  });
+  if (!courseSession) return { ok: false, error: "Course run not found." };
+
+  // Resolve or create student (same dedup logic as convertLead).
+  let studentId = lead.studentId ?? null;
+  let reused = false;
+  if (!studentId) {
+    const normEmail = normalizeEmail(lead.email);
+    if (normEmail) {
+      const existing = await prisma.student.findUnique({ where: { email: normEmail }, select: { id: true } });
+      if (existing) { studentId = existing.id; reused = true; }
+    }
+    if (!studentId) {
+      try {
+        const created = await prisma.student.create({
+          data: {
+            firstName: lead.firstName,
+            lastName: lead.lastName,
+            email: normalizeEmail(lead.email),
+            phone: lead.phone,
+            notes: lead.notes,
+            tags: lead.tags,
+          },
+          select: { id: true },
+        });
+        studentId = created.id;
+      } catch (err) {
+        console.error("createRegistrationFromLead: student create failed", err);
+        return { ok: false, error: "Couldn't create student record. Please try again." };
+      }
+    }
+  }
+
+  // Capacity-guarded transactional registration (serializable to prevent TOCTOU).
+  let registrationId: string;
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const clash = await tx.registration.findUnique({
+        where: { studentId_sessionId: { studentId: studentId!, sessionId } },
+        select: { id: true },
+      });
+      if (clash) return { existingId: clash.id, newId: null };
+
+      const taken = await tx.registration.count({
+        where: { sessionId, status: { in: ["PENDING", "CONFIRMED", "ATTENDING", "COMPLETED"] } },
+      });
+      if (taken >= courseSession.capacity) {
+        throw Object.assign(
+          new Error(`Course run is at capacity (${taken}/${courseSession.capacity}).`),
+          { code: "FULL" }
+        );
+      }
+
+      const reg = await tx.registration.create({
+        data: {
+          studentId: studentId!,
+          sessionId,
+          leadId,
+          status: "CONFIRMED",
+          source: "Drawer conversion",
+          confirmedAt: new Date(),
+          salesOwnerId: authSession.user.id,
+          agreedPrice: agreedPrice != null ? agreedPrice : undefined,
+        },
+        select: { id: true },
+      });
+      return { existingId: null, newId: reg.id };
+    }, { isolationLevel: "Serializable" });
+
+    registrationId = result.existingId ?? result.newId!;
+  } catch (err: unknown) {
+    const e = err as { code?: string; message?: string };
+    if (e?.code === "FULL") return { ok: false, error: e.message ?? "Course run is at capacity." };
+    if (e?.code === "P2034") return { ok: false, error: "Course run just filled up — please select another." };
+    console.error("createRegistrationFromLead: transaction failed", err);
+    return { ok: false, error: "Couldn't create registration. Please try again." };
+  }
+
+  // Check if session is now full and update its status.
+  const taken = await prisma.registration.count({
+    where: { sessionId, status: { in: ["PENDING", "CONFIRMED", "ATTENDING", "COMPLETED"] } },
+  });
+  if (taken >= courseSession.capacity) {
+    await prisma.courseSession.update({ where: { id: sessionId }, data: { status: "FULL" } });
+  }
+
+  // Link student to lead and flip status to REGISTERED.
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { studentId: studentId!, status: "REGISTERED" },
+  });
+
+  void recordActivity({
+    type: "lead.converted",
+    entity: "Lead",
+    entityId: leadId,
+    userId: authSession.user.id,
+    meta: { studentId, registrationId, reused, courseName: courseSession.course?.name ?? null },
+  });
+
+  if (courseSession.course?.slug) revalidatePath(`/courses/${courseSession.course.slug}`);
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/my-leads");
+  revalidatePath("/students");
+  return { ok: true, data: { registrationId, studentId: studentId! } };
+}

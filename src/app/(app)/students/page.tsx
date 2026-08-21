@@ -20,6 +20,7 @@ export default async function StudentsPage({
   const parsed = listStudentsSchema.parse({
     q: readString(params.q),
     tag: readString(params.tag),
+    paymentStatus: readString(params.paymentStatus),
     page: readString(params.page),
     pageSize: readString(params.pageSize),
     sortBy: readString(params.sortBy),

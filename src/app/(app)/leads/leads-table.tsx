@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { MoreHorizontal, Mail, Phone, Contact, Clock, Star, Eye, PhoneCall, AlarmClock, MessageCircle, Plus } from "lucide-react";
+import { MoreHorizontal, Mail, Phone, Contact, Clock, Star, Eye, PhoneCall, AlarmClock, MessageCircle, Plus, FormInput } from "lucide-react";
 import { isPast, isToday, parseISO } from "date-fns";
 import { useRouter } from "next/navigation";
 import { useQueryStates } from "nuqs";
@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 import { DataTable } from "@/components/tables/data-table";
 import { DataTableColumnHeader } from "@/components/tables/data-table-column-header";
 import { DataTablePagination } from "@/components/tables/data-table-pagination";
-import { StatusBadge } from "@/components/primitives/status-badge";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,8 +31,30 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { CommunicationSheet } from "@/components/shared/communication-sheet";
+import { calcPaymentStatus } from "@/lib/payment-status";
 import { leadFilters } from "./leads-filters";
 import type { LeadRow } from "./actions";
+
+// ─── Status color system ──────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<string, { avatar: string; row: string; label: string }> = {
+  NEW:             { avatar: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",       row: "",                                                         label: "New" },
+  ASSIGNED:        { avatar: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300", row: "bg-indigo-50/30 dark:bg-indigo-950/10",                   label: "Assigned" },
+  CONTACTED:       { avatar: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",         row: "bg-blue-50/40 dark:bg-blue-950/10",                       label: "Contacted" },
+  INTERESTED:      { avatar: "bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300", row: "bg-violet-50/40 dark:bg-violet-950/10",                   label: "Interested" },
+  FOLLOW_UP:       { avatar: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",     row: "bg-amber-50/40 dark:bg-amber-950/10",                     label: "Interested" },
+  CONFIRMED:       { avatar: "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300", row: "bg-purple-50/40 dark:bg-purple-950/10",                   label: "Confirmed" },
+  REGISTERED:      { avatar: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",     row: "bg-green-50/60 dark:bg-green-950/20",                     label: "Registered" },
+  LOST:            { avatar: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",             row: "bg-red-50/60 dark:bg-red-950/20",                         label: "Lost" },
+  NOT_INTERESTED:  { avatar: "bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300",         row: "bg-rose-50/40 dark:bg-rose-950/10",                       label: "Not interested" },
+  UNREACHABLE:     { avatar: "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300", row: "bg-orange-50/40 dark:bg-orange-950/10",                   label: "Unreachable" },
+};
+
+function statusConfig(status: string) {
+  return STATUS_CONFIG[status] ?? STATUS_CONFIG.NEW;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function NoteCell({ leadId, body }: { leadId: string; body: string | null | undefined }) {
   const router = useRouter();
@@ -41,10 +62,7 @@ function NoteCell({ leadId, body }: { leadId: string; body: string | null | unde
   const preview = body && body.length > 30 ? body.slice(0, 30) + "…" : body;
 
   return (
-    <div
-      className="group flex items-center gap-1.5"
-      onClick={(e) => e.stopPropagation()}
-    >
+    <div className="group flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
       {body ? (
         <TooltipProvider delayDuration={200}>
           <Tooltip>
@@ -54,10 +72,7 @@ function NoteCell({ leadId, body }: { leadId: string; body: string | null | unde
                 <span className="truncate">{preview}</span>
               </span>
             </TooltipTrigger>
-            <TooltipContent
-              side="top"
-              className="max-w-[280px] whitespace-pre-wrap text-xs leading-relaxed"
-            >
+            <TooltipContent side="top" className="max-w-[280px] whitespace-pre-wrap text-xs leading-relaxed">
               {body}
             </TooltipContent>
           </Tooltip>
@@ -65,22 +80,17 @@ function NoteCell({ leadId, body }: { leadId: string; body: string | null | unde
       ) : (
         <span className="text-xs text-muted-foreground/40 italic">—</span>
       )}
-
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="opacity-0 group-hover:opacity-100 transition-opacity ml-auto shrink-0 flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted"
+        className="opacity-0 group-hover:opacity-100 transition-opacity ms-auto shrink-0 flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted"
       >
         <Plus className="size-3" />
         Note
       </button>
-
       <CommunicationSheet
         open={open}
-        onOpenChange={(v) => {
-          setOpen(v);
-          if (!v) router.refresh();
-        }}
+        onOpenChange={(v) => { setOpen(v); if (!v) router.refresh(); }}
         leadId={leadId}
         defaultType="NOTE"
       />
@@ -93,13 +103,28 @@ function fullName(row: LeadRow) {
 }
 
 function initials(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase())
-    .join("");
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
 }
+
+function SourceCell({ source }: { source: string | null | undefined }) {
+  if (!source) return <span className="text-xs text-muted-foreground/40">—</span>;
+
+  const isForm = source.startsWith("Form:");
+  const label = isForm ? source.replace(/^Form:\s*/, "") : source;
+
+  return (
+    <div className="flex items-center gap-1.5 max-w-[160px]">
+      {isForm ? (
+        <FormInput className="size-3 shrink-0 text-muted-foreground" />
+      ) : null}
+      <span className="truncate text-xs text-muted-foreground" title={label}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+// ─── Table ────────────────────────────────────────────────────────────────────
 
 export function LeadsTable({
   rows,
@@ -121,14 +146,8 @@ export function LeadsTable({
 
   const toggleSort = (key: "createdAt" | "firstName" | "status") => {
     setFilters((prev) => {
-      if (prev.sortBy !== key) {
-        return { ...prev, sortBy: key, sortDir: "asc", page: 1 };
-      }
-      return {
-        ...prev,
-        sortDir: prev.sortDir === "asc" ? "desc" : "asc",
-        page: 1,
-      };
+      if (prev.sortBy !== key) return { ...prev, sortBy: key, sortDir: "asc", page: 1 };
+      return { ...prev, sortDir: prev.sortDir === "asc" ? "desc" : "asc", page: 1 };
     });
   };
 
@@ -142,10 +161,7 @@ export function LeadsTable({
         size: 32,
         header: ({ table }) => (
           <Checkbox
-            checked={
-              table.getIsAllPageRowsSelected() ||
-              (table.getIsSomePageRowsSelected() && "indeterminate")
-            }
+            checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && "indeterminate")}
             onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
             aria-label="Select all"
             className="translate-y-[1px]"
@@ -173,6 +189,12 @@ export function LeadsTable({
         ),
         cell: ({ row }) => {
           const name = fullName(row.original) || "—";
+          const cfg = statusConfig(row.original.status);
+          const payDot = calcPaymentStatus(
+            (row.original as Record<string, unknown>).student
+              ? ((row.original as Record<string, unknown>).student as { registrations: Parameters<typeof calcPaymentStatus>[0] }).registrations
+              : null
+          );
           const due = row.original.nextActionDue
             ? parseISO(row.original.nextActionDue.toString())
             : null;
@@ -182,10 +204,16 @@ export function LeadsTable({
             <div className="flex items-center gap-3 min-w-0">
               <div className="relative shrink-0">
                 <Avatar className="size-8">
-                  <AvatarFallback className="text-[11px] font-semibold bg-primary/10 text-primary">
+                  <AvatarFallback className={cn("text-[11px] font-semibold", cfg.avatar)}>
                     {initials(name || "?")}
                   </AvatarFallback>
                 </Avatar>
+                {payDot === "full" && (
+                  <span className="absolute -bottom-0.5 -end-0.5 size-2.5 rounded-full border-2 border-background bg-green-500" title="Fully paid" />
+                )}
+                {payDot === "partial" && (
+                  <span className="absolute -bottom-0.5 -end-0.5 size-2.5 rounded-full border-2 border-background bg-blue-500" title="Partially paid" />
+                )}
                 {row.original.isHighPriority ? (
                   <Star className="absolute -top-1 -end-1 size-3 fill-amber-400 text-amber-400" />
                 ) : null}
@@ -202,7 +230,7 @@ export function LeadsTable({
                   </div>
                 ) : (
                   <div className="truncate text-xs text-muted-foreground">
-                    {row.original.source ?? "No source"}
+                    {cfg.label}
                   </div>
                 )}
               </div>
@@ -242,36 +270,15 @@ export function LeadsTable({
         ),
       },
       {
-        accessorKey: "status",
-        header: () => (
-          <DataTableColumnHeader
-            title="Status"
-            sortDir={sortDirFor("status")}
-            onToggleSort={() => toggleSort("status")}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            <StatusBadge status={row.original.status} />
-            {!row.original.subscribed ? (
-              <span
-                title="Unsubscribed — do not retarget"
-                className="inline-flex items-center rounded-md border border-border/60 bg-muted/40 px-1.5 py-0 text-[10px] uppercase tracking-wider text-muted-foreground"
-              >
-                Unsub
-              </span>
-            ) : null}
-          </div>
-        ),
+        id: "source",
+        header: "Source",
+        cell: ({ row }) => <SourceCell source={(row.original as Record<string, unknown>).source as string | null} />,
       },
       {
         id: "lastNote",
         header: "Last note",
         cell: ({ row }) => (
-          <NoteCell
-            leadId={row.original.id}
-            body={row.original.communications?.[0]?.body}
-          />
+          <NoteCell leadId={row.original.id} body={row.original.communications?.[0]?.body} />
         ),
       },
       {
@@ -323,10 +330,7 @@ export function LeadsTable({
                 <DropdownMenuItem disabled>Edit</DropdownMenuItem>
                 <DropdownMenuItem disabled>Convert</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  disabled
-                  className="text-destructive focus:text-destructive"
-                >
+                <DropdownMenuItem disabled className="text-destructive focus:text-destructive">
                   Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -345,12 +349,7 @@ export function LeadsTable({
         title="No leads match your filters"
         description="Try clearing filters or searching for something else."
         action={
-          <Button
-            variant="outline"
-            onClick={() =>
-              setFilters({ q: "", status: "ALL", page: 1 })
-            }
-          >
+          <Button variant="outline" onClick={() => setFilters({ q: "", status: "ALL", page: 1 })}>
             Clear filters
           </Button>
         }
@@ -376,6 +375,7 @@ export function LeadsTable({
         onRowSelectionChange={onRowSelectionChange}
         getRowId={(r) => r.id}
         onRowClick={(row) => router.push(`/leads/${row.id}`)}
+        getRowClassName={(row) => statusConfig(row.status).row}
       />
       <DataTablePagination
         page={filters.page}

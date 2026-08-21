@@ -29,7 +29,7 @@ export function OverviewTab({ detail }: { detail: CourseDetail }) {
       icon: Globe,
     },
     {
-      label: "Sessions",
+      label: "Course Runs",
       value: course._count.sessions,
       icon: CalendarDays,
     },

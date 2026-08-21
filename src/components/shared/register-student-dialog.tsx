@@ -215,16 +215,16 @@ export function RegisterStudentDialog(props: Props) {
           {props.mode === "student-first" ? (
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-foreground/80">
-                Session
+                Course Run
               </label>
               <Select value={sessionId} onValueChange={setSessionId}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Pick a session" />
+                  <SelectValue placeholder="Pick a course run" />
                 </SelectTrigger>
                 <SelectContent>
                   {props.sessions.length === 0 ? (
                     <div className="px-2 py-3 text-xs text-muted-foreground">
-                      No upcoming sessions — create one first.
+                      No upcoming course runs — create one first.
                     </div>
                   ) : (
                     props.sessions.map((s) => (
@@ -240,7 +240,7 @@ export function RegisterStudentDialog(props: Props) {
               </Select>
             </div>
           ) : chosenSession ? (
-            <LockedRow label="Session" value={displaySession(chosenSession)} />
+            <LockedRow label="Course Run" value={displaySession(chosenSession)} />
           ) : null}
 
           {/* Seat hint */}

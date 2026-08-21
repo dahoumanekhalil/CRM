@@ -6,10 +6,17 @@ import { Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/primitives/search-input";
+import { cn } from "@/lib/utils";
 
 import { studentFilters } from "./students-filters";
 import { exportStudentsCsv } from "./export";
 import { CsvExportButton } from "@/components/primitives/csv-export-button";
+
+const PAYMENT_PRESETS = [
+  { value: "all", label: "All" },
+  { value: "paying", label: "Paying" },
+  { value: "unpaid", label: "Unpaid" },
+] as const;
 
 export function StudentsToolbar({
   total,
@@ -20,7 +27,7 @@ export function StudentsToolbar({
 }) {
   const [filters, setFilters] = useQueryStates(studentFilters);
 
-  const hasActiveFilters = filters.q !== "" || filters.tag !== "";
+  const hasActiveFilters = filters.q !== "" || filters.tag !== "" || filters.paymentStatus !== "all";
 
   return (
     <div className="flex flex-col gap-3">
@@ -51,7 +58,7 @@ export function StudentsToolbar({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setFilters({ q: "", tag: "", page: 1 })}
+              onClick={() => setFilters({ q: "", tag: "", paymentStatus: "all", page: 1 })}
               className="text-muted-foreground hover:text-foreground"
             >
               <X className="size-3.5" /> Clear
@@ -73,6 +80,25 @@ export function StudentsToolbar({
             <Plus /> New student
           </Button>
         </div>
+      </div>
+
+      {/* Payment status filter pills */}
+      <div className="flex items-center gap-1.5">
+        {PAYMENT_PRESETS.map((p) => (
+          <button
+            key={p.value}
+            type="button"
+            onClick={() => setFilters({ paymentStatus: p.value, page: 1 })}
+            className={cn(
+              "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+              filters.paymentStatus === p.value
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+            )}
+          >
+            {p.label}
+          </button>
+        ))}
       </div>
     </div>
   );

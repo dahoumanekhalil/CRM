@@ -13,9 +13,14 @@ export const DEFAULT_PREFERENCES: Record<NotificationType, boolean> = {
   [NotificationTypes.TASK_OVERDUE]: true,
   [NotificationTypes.SESSION_NEAR_CAPACITY]: false,
   [NotificationTypes.SESSION_REMINDER]: true,
+  [NotificationTypes.SESSION_TODAY]: true,
   [NotificationTypes.COURSE_UPDATE]: false,
   [NotificationTypes.PAYMENT_PENDING]: true,
+  [NotificationTypes.PAYMENT_RECORDED]: true,
   [NotificationTypes.LEAD_ASSIGNED]: true,
+  [NotificationTypes.LEAD_UNASSIGNED_ALERT]: true,
+  [NotificationTypes.TEAM_OVERDUE_ALERT]: true,
+  [NotificationTypes.BALANCE_OUTSTANDING]: true,
   [NotificationTypes.DAILY_DIGEST]: false,
 };
 

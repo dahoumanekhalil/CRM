@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, X } from "lucide-react";
+import { AlertTriangle, Loader2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { LeadStatus } from "@/lib/schemas/lead";
 import { bulkUpdateLeadStatus, bulkAssignLeads } from "./actions";
-import type { SalesTeamMember } from "./actions";
+import type { SalesTeamMember, LeadRow } from "./actions";
 
 const humanize = (s: string) =>
   s
@@ -42,11 +42,6 @@ const QUICK_STATUSES: Array<{
     className: "bg-success/10 text-success hover:bg-success/20 border-success/20",
   },
   {
-    status: "FOLLOW_UP",
-    label: "Follow up",
-    className: "bg-warning/10 text-warning hover:bg-warning/20 border-warning/20",
-  },
-  {
     status: "CONFIRMED",
     label: "Mark confirmed",
     className: "bg-success/10 text-success hover:bg-success/20 border-success/20",
@@ -63,13 +58,22 @@ const QUICK_STATUSES: Array<{
   },
 ];
 
+type ConflictState = {
+  assigneeId: string;
+  /** Grouped by current owner: ownerId → { name, count } */
+  byOwner: Map<string, { name: string; count: number }>;
+  unassignedCount: number;
+};
+
 export function BulkActionBar({
   selectedIds,
+  selectedLeads = [],
   onClear,
   salesTeam = [],
   canAssign = false,
 }: {
   selectedIds: string[];
+  selectedLeads?: LeadRow[];
   onClear: () => void;
   salesTeam?: SalesTeamMember[];
   canAssign?: boolean;
@@ -78,15 +82,17 @@ export function BulkActionBar({
   const [pending, startTransition] = React.useTransition();
   const [pendingStatus, setPendingStatus] = React.useState<LeadStatus | null>(null);
   const [assignPending, setAssignPending] = React.useState(false);
-  const count = selectedIds.length;
+  const [conflict, setConflict] = React.useState<ConflictState | null>(null);
 
+  const count = selectedIds.length;
   if (count === 0) return null;
 
-  const handleBulkAssign = (assigneeId: string) => {
+  function runAssign(ids: string[], assigneeId: string) {
     setAssignPending(true);
     startTransition(async () => {
-      const res = await bulkAssignLeads(selectedIds, assigneeId);
+      const res = await bulkAssignLeads(ids, assigneeId);
       setAssignPending(false);
+      setConflict(null);
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -98,7 +104,29 @@ export function BulkActionBar({
       onClear();
       router.refresh();
     });
-  };
+  }
+
+  function handleRepSelect(assigneeId: string) {
+    // Check for leads already assigned to a DIFFERENT rep
+    const byOwner = new Map<string, { name: string; count: number }>();
+    let unassignedCount = 0;
+
+    for (const lead of selectedLeads) {
+      if (!lead.ownerId) {
+        unassignedCount++;
+      } else if (lead.ownerId !== assigneeId) {
+        const ownerName = lead.owner?.name ?? lead.owner?.email ?? "another rep";
+        const existing = byOwner.get(lead.ownerId) ?? { name: ownerName, count: 0 };
+        byOwner.set(lead.ownerId, { ...existing, count: existing.count + 1 });
+      }
+    }
+
+    if (byOwner.size > 0) {
+      setConflict({ assigneeId, byOwner, unassignedCount });
+    } else {
+      runAssign(selectedIds, assigneeId);
+    }
+  }
 
   const applyStatus = (status: LeadStatus) => {
     setPendingStatus(status);
@@ -117,6 +145,66 @@ export function BulkActionBar({
     });
   };
 
+  // ── Conflict resolution panel ──────────────────────────────────────────────
+
+  if (conflict) {
+    const ownerList = Array.from(conflict.byOwner.values());
+    const conflictTotal = ownerList.reduce((s, o) => s + o.count, 0);
+    const assigneeName = salesTeam.find((u) => u.id === conflict.assigneeId)?.name ?? "the selected rep";
+    const conflictSummary = ownerList
+      .map((o) => `${o.count} from ${o.name}`)
+      .join(", ");
+
+    const reassignAllIds = selectedIds;
+    const reassignOnlyUnassigned = selectedLeads
+      .filter((l) => !l.ownerId)
+      .map((l) => l.id);
+
+    return (
+      <div className="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 space-y-2">
+        <div className="flex items-start gap-2 text-sm">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+          <span>
+            <span className="font-medium">{conflictTotal} lead{conflictTotal !== 1 ? "s" : ""}</span>
+            {" "}({conflictSummary}) are currently assigned to another rep. Reassign to <span className="font-medium">{assigneeName}</span>?
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2.5 text-xs"
+            onClick={() => setConflict(null)}
+            disabled={assignPending}
+          >
+            Cancel
+          </Button>
+          {conflict.unassignedCount > 0 && reassignOnlyUnassigned.length > 0 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2.5 text-xs"
+              onClick={() => runAssign(reassignOnlyUnassigned, conflict.assigneeId)}
+              disabled={assignPending}
+            >
+              {assignPending ? <Loader2 className="size-3 animate-spin" /> : null}
+              Assign only unassigned ({conflict.unassignedCount})
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            className="h-7 px-2.5 text-xs"
+            onClick={() => runAssign(reassignAllIds, conflict.assigneeId)}
+            disabled={assignPending}
+          >
+            {assignPending ? <Loader2 className="size-3 animate-spin" /> : null}
+            Reassign all ({count})
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
       <span className="text-sm font-medium text-primary">
@@ -124,7 +212,7 @@ export function BulkActionBar({
       </span>
       <div className="h-4 w-px bg-border/60" aria-hidden />
       {canAssign && salesTeam.length > 0 ? (
-        <Select onValueChange={handleBulkAssign} disabled={pending || assignPending}>
+        <Select onValueChange={handleRepSelect} disabled={pending || assignPending}>
           <SelectTrigger className="h-7 w-auto gap-1.5 border-dashed px-2.5 text-xs font-medium">
             <SelectValue placeholder="Assign to…" />
           </SelectTrigger>

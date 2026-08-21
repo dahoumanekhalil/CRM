@@ -173,7 +173,7 @@ export function CoursesTable({
       },
       {
         id: "sessions",
-        header: () => <span className="text-end block w-full">Sessions</span>,
+        header: () => <span className="text-end block w-full">Runs</span>,
         cell: ({ row }) => (
           <div className="text-end text-sm text-muted-foreground tabular-nums">
             {row.original._count?.sessions ?? 0}

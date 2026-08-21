@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 
 import {
   Sheet,
@@ -41,7 +41,7 @@ import {
   LEAD_STATUSES,
   type CreateLeadInput,
 } from "@/lib/schemas/lead";
-import { createLead } from "./actions";
+import { createLead, type PotentialDuplicate } from "./actions";
 
 type FormInput = z.input<typeof createLeadSchema>;
 type FormOutput = z.output<typeof createLeadSchema>;
@@ -83,6 +83,16 @@ export function NewLeadSheet({
   }, [open, form]);
 
   const [pending, startTransition] = React.useTransition();
+  const [duplicates, setDuplicates] = React.useState<PotentialDuplicate[]>([]);
+  const [createdId, setCreatedId] = React.useState<string | null>(null);
+
+  // Reset duplicate state when sheet reopens
+  React.useEffect(() => {
+    if (open) {
+      setDuplicates([]);
+      setCreatedId(null);
+    }
+  }, [open]);
 
   const onSubmit = (values: FormOutput) => {
     startTransition(async () => {
@@ -92,9 +102,21 @@ export function NewLeadSheet({
         return;
       }
       toast.success("Lead created");
-      onOpenChange(false);
-      router.refresh();
+      setCreatedId(res.data.id);
+      if (res.data.duplicates.length > 0) {
+        setDuplicates(res.data.duplicates);
+        // Refresh data in the background but keep sheet open for the banner
+        router.refresh();
+      } else {
+        onOpenChange(false);
+        router.refresh();
+      }
     });
+  };
+
+  const handleDismiss = () => {
+    onOpenChange(false);
+    if (createdId) router.push(`/leads/${createdId}`);
   };
 
   return (
@@ -265,6 +287,39 @@ export function NewLeadSheet({
           </form>
         </Form>
 
+        {duplicates.length > 0 ? (
+          <div className="border-t border-border/70 px-4 pt-4 pb-2 space-y-3">
+            <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/5 px-3 py-2.5">
+              <AlertCircle className="mt-0.5 size-4 shrink-0 text-warning" />
+              <div className="min-w-0 text-sm">
+                <p className="font-medium text-foreground">Possible duplicate{duplicates.length > 1 ? "s" : ""} found</p>
+                <ul className="mt-1 space-y-0.5">
+                  {duplicates.slice(0, 3).map((d) => (
+                    <li key={`${d.type}-${d.id}`} className="text-muted-foreground">
+                      <a
+                        href={d.type === "lead" ? `/leads/${d.id}` : `/students/${d.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:text-foreground hover:underline"
+                      >
+                        {d.name || "Unnamed"} ({d.type})
+                      </a>{" "}
+                      — matched on {d.matchedOn}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                Dismiss
+              </Button>
+              <Button onClick={handleDismiss}>
+                View new lead
+              </Button>
+            </div>
+          </div>
+        ) : (
         <SheetFooter className="border-t border-border/70">
           <div className="flex w-full items-center justify-end gap-2">
             <Button
@@ -281,6 +336,7 @@ export function NewLeadSheet({
             </Button>
           </div>
         </SheetFooter>
+        )}
       </SheetContent>
     </Sheet>
   );

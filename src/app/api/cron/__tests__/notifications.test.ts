@@ -38,8 +38,8 @@ const mockPrisma = vi.hoisted(() => ({
   },
   task: { findMany: vi.fn(), groupBy: vi.fn(), count: vi.fn() },
   courseSession: { findMany: vi.fn(), count: vi.fn() },
-  payment: { findMany: vi.fn(), count: vi.fn(), aggregate: vi.fn() },
-  lead: { count: vi.fn() },
+  payment: { findMany: vi.fn(), count: vi.fn(), aggregate: vi.fn(), groupBy: vi.fn() },
+  lead: { count: vi.fn(), groupBy: vi.fn() },
   registration: { count: vi.fn() },
   user: { findUnique: vi.fn(), findMany: vi.fn() },
 }));
@@ -108,6 +108,8 @@ beforeEach(() => {
   mockPrisma.payment.count.mockResolvedValue(0);
   mockPrisma.payment.aggregate.mockResolvedValue({ _sum: { amount: null } });
   mockPrisma.lead.count.mockResolvedValue(0);
+  mockPrisma.lead.groupBy.mockResolvedValue([]);
+  mockPrisma.payment.groupBy.mockResolvedValue([]);
   mockPrisma.registration.count.mockResolvedValue(0);
   mockPrisma.user.findMany.mockResolvedValue([]);
   mockPrisma.user.findUnique.mockResolvedValue({ id: "user-1", role: "ADMIN" });

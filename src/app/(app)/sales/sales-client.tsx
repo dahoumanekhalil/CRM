@@ -564,21 +564,21 @@ export function SalesManagerClient({
           ) : null}
         </section>
 
-        {/* Upcoming session capacity */}
+        {/* Upcoming course run capacity */}
         <section className="rounded-xl border border-border/60 bg-card overflow-hidden">
           <header className="border-b border-border/60 px-4 py-3">
-            <h2 className="text-sm font-semibold tracking-tight">Upcoming Session Capacity</h2>
+            <h2 className="text-sm font-semibold tracking-tight">Upcoming Course Run Capacity</h2>
           </header>
           {sessionStats.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No upcoming sessions.
+              No upcoming course runs.
             </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border/40 text-xs text-muted-foreground">
-                    <th className="px-4 py-2 text-start font-medium">Session</th>
+                    <th className="px-4 py-2 text-start font-medium">Course Run</th>
                     <th className="px-4 py-2 text-center font-medium">Leads</th>
                     <th className="px-4 py-2 text-center font-medium">Confirmed</th>
                     <th className="px-4 py-2 text-start font-medium">Capacity</th>

@@ -6,8 +6,6 @@ import { CourseTabsView } from "./course-tabs";
 import { LandingPagesTab } from "./landing-pages-tab";
 import { SessionsTab } from "./sessions-tab";
 import { RegistrationsTab } from "./registrations-tab";
-import { PaymentsTab } from "./payments-tab";
-import { CourseCampaignsTab } from "./campaigns-tab";
 import { CourseActivityTab } from "./activity-tab";
 
 type Params = Promise<{ slug: string }>;
@@ -41,27 +39,26 @@ export default async function CourseDetailPage({
       <div className="flex-1 p-6">
         <CourseTabsView
           detail={data}
-          landingPagesSlot={
-            <LandingPagesTab
-              courseId={data.course.id}
-              courseName={data.course.name}
-            />
-          }
           sessionsSlot={
             <SessionsTab
               courseId={data.course.id}
+              courseSlug={slug}
               courseName={data.course.name}
             />
           }
-          registrationsSlot={
+          studentsSlot={
             <RegistrationsTab
               courseId={data.course.id}
               activeRegistrations={data.activeRegistrations}
               totalCapacity={data.totalCapacity}
             />
           }
-          paymentsSlot={<PaymentsTab courseId={data.course.id} />}
-          campaignsSlot={<CourseCampaignsTab courseId={data.course.id} />}
+          landingPagesSlot={
+            <LandingPagesTab
+              courseId={data.course.id}
+              courseName={data.course.name}
+            />
+          }
           activitySlot={<CourseActivityTab courseId={data.course.id} />}
         />
       </div>

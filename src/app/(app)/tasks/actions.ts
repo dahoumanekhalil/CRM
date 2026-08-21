@@ -203,6 +203,24 @@ export async function toggleTaskComplete(
       },
     });
 
+    // When completing a task linked to a Lead or Student, clear their nextAction
+    // so the follow-up doesn't stay visible as pending in their drawer.
+    if (!isDone && taskData?.entityId) {
+      if (taskData.entityType === "Lead") {
+        await prisma.lead.update({
+          where: { id: taskData.entityId },
+          data: { nextAction: null, nextActionDue: null, nextActionOwnerId: null },
+        }).catch(() => null);
+        revalidatePath("/leads");
+      } else if (taskData.entityType === "Student") {
+        await prisma.student.update({
+          where: { id: taskData.entityId },
+          data: { nextAction: null, nextActionDue: null, nextActionOwnerId: null },
+        }).catch(() => null);
+        revalidatePath("/students");
+      }
+    }
+
     if (taskData?.entityType && taskData.entityId) {
       void recordActivity({
         type: isDone ? "task.reopened" : "task.completed",

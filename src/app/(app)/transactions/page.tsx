@@ -1,10 +1,10 @@
 import { PageHeader } from "@/components/primitives/page-header";
 import { Forbidden } from "@/components/primitives/forbidden";
 import { requirePermissionPage } from "@/lib/auth-guards";
-import { listTransactions } from "./actions";
+import { listLedger } from "./actions";
 import { TransactionsClient } from "./transactions-client";
 
-export const metadata = { title: "Transactions" };
+export const metadata = { title: "Ledger" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 const readString = (v: string | string[] | undefined) =>
@@ -19,8 +19,8 @@ export default async function TransactionsPage({
   if (!allowed) {
     return (
       <Forbidden
-        title="Transactions is Finance-only"
-        description="Only Admin, Manager and Finance roles can view the transaction ledger."
+        title="Ledger is Finance-only"
+        description="Only Admin, Manager and Finance roles can view the financial ledger."
       />
     );
   }
@@ -33,7 +33,7 @@ export default async function TransactionsPage({
     Math.max(5, Number(readString(params.pageSize) ?? "25") || 25)
   );
 
-  const { rows, total, summary } = await listTransactions({
+  const { rows, total, summary } = await listLedger({
     from: readString(params.from),
     to: readString(params.to),
     status: readString(params.status),
@@ -48,15 +48,11 @@ export default async function TransactionsPage({
     <>
       <PageHeader
         eyebrow="Finance"
-        title="Transactions"
-        description="Complete payment ledger — all money in and out."
+        title="Ledger"
+        description="Combined financial ledger — payments received and expenses recorded."
       />
       <div className="flex-1 space-y-6 p-6">
-        <TransactionsClient
-          rows={rows}
-          total={total}
-          summary={summary}
-        />
+        <TransactionsClient rows={rows} total={total} summary={summary} />
       </div>
     </>
   );

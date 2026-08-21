@@ -62,7 +62,7 @@ export function SessionsToolbar({
             containerClassName="flex-1"
             value={filters.q}
             onChange={(v) => setFilters({ q: v, page: 1 })}
-            placeholder="Search sessions by title, city, course…"
+            placeholder="Search course runs by title, city, course…"
           />
           <Select
             value={filters.courseId || "__all"}
@@ -123,7 +123,7 @@ export function SessionsToolbar({
             </Button>
           ) : null}
           <Button onClick={onNewSession} size="sm">
-            <Plus /> New session
+            <Plus /> New course run
           </Button>
         </div>
       </div>
