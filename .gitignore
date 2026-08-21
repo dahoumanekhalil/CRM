@@ -61,3 +61,6 @@ algeria_cities.csv
 
 # Production config folder — contains secrets, never commit
 /_production
+
+# Docker legacy file (replaced by compose.yml + Podman Quadlet)
+docker-compose.yml
