@@ -8,16 +8,21 @@ import { cn } from "@/lib/utils";
 import { useEditor } from "./editor-store";
 import {
   BenefitsForm,
+  CarouselForm,
+  CountdownForm,
   CTAForm,
   CurriculumForm,
   FAQForm,
   FeaturesForm,
   FormForm,
+  GalleryForm,
   HeroForm,
   InstructorForm,
   PricingForm,
   SocialProofForm,
   TestimonialsForm,
+  TwoColumnForm,
+  VideoForm,
 } from "./inspector-forms";
 
 export function Inspector() {
@@ -171,6 +176,16 @@ function BlockForm({
       return <CurriculumForm value={block.props} onChange={onChange} />;
     case "social-proof":
       return <SocialProofForm value={block.props} onChange={onChange} />;
+    case "video":
+      return <VideoForm value={block.props} onChange={onChange} />;
+    case "gallery":
+      return <GalleryForm value={block.props} onChange={onChange} />;
+    case "carousel":
+      return <CarouselForm value={block.props} onChange={onChange} />;
+    case "countdown":
+      return <CountdownForm value={block.props} onChange={onChange} />;
+    case "two-column":
+      return <TwoColumnForm value={block.props} onChange={onChange} />;
     default: {
       const _exhaustive: never = block;
       return null;

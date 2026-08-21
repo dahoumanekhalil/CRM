@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Bot, Copy, Check, Link2, Loader2, ShieldX } from "lucide-react";
+import { Bot, Copy, Check, Link2, Loader2, Send, ShieldX } from "lucide-react";
+import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -135,6 +136,19 @@ export function TelegramAdminClient({
 
   return (
     <div className="space-y-4">
+      {/* Broadcast shortcut */}
+      <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">Send a broadcast message</p>
+          <p className="text-xs text-muted-foreground">Message all or selected connected accounts via Telegram.</p>
+        </div>
+        <Button size="sm" asChild>
+          <Link href="/settings/telegram/broadcast">
+            <Send className="size-3.5" /> Broadcast
+          </Link>
+        </Button>
+      </div>
+
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
         <Input

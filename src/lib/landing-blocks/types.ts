@@ -12,7 +12,12 @@ export type BlockType =
   | "testimonials"
   | "benefits"
   | "curriculum"
-  | "social-proof";
+  | "social-proof"
+  | "video"
+  | "gallery"
+  | "carousel"
+  | "countdown"
+  | "two-column";
 
 export interface HeroProps {
   eyebrow?: string;
@@ -104,6 +109,53 @@ export interface SocialProofProps {
   note?: string;
 }
 
+export interface VideoProps {
+  heading?: string;
+  subheading?: string;
+  url: string;
+  caption?: string;
+  aspectRatio?: "16/9" | "4/3" | "1/1";
+}
+
+export interface GalleryProps {
+  heading?: string;
+  subheading?: string;
+  images: Array<{ url: string; caption?: string }>;
+  columns?: 2 | 3 | 4;
+}
+
+export interface CarouselProps {
+  heading?: string;
+  subheading?: string;
+  slides: Array<{
+    imageUrl: string;
+    title?: string;
+    description?: string;
+    badge?: string;
+  }>;
+  autoPlay?: boolean;
+}
+
+export interface CountdownProps {
+  heading?: string;
+  subheading?: string;
+  targetDate: string; // ISO date-time string
+  ctaLabel?: string;
+  ctaHref?: string;
+  expiredMessage?: string;
+}
+
+export interface TwoColumnProps {
+  eyebrow?: string;
+  heading?: string;
+  body?: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+  imageUrl?: string;
+  imageAlt?: string;
+  layout?: "image-right" | "image-left";
+}
+
 export interface FormProps {
   heading?: string;
   subheading?: string;
@@ -137,6 +189,11 @@ export type BlockPropsByType = {
   benefits: BenefitsProps;
   curriculum: CurriculumProps;
   "social-proof": SocialProofProps;
+  video: VideoProps;
+  gallery: GalleryProps;
+  carousel: CarouselProps;
+  countdown: CountdownProps;
+  "two-column": TwoColumnProps;
 };
 
 export type LandingBlock = {

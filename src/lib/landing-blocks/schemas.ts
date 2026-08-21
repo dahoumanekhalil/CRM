@@ -126,6 +126,61 @@ const socialProofPropsSchema = z.object({
   note: optStr(200),
 });
 
+const videoPropsSchema = z.object({
+  heading: optStr(120),
+  subheading: optStr(300),
+  url: z.string().max(500),
+  caption: optStr(200),
+  aspectRatio: z.enum(["16/9", "4/3", "1/1"]).optional(),
+});
+
+const galleryPropsSchema = z.object({
+  heading: optStr(120),
+  subheading: optStr(300),
+  images: z
+    .array(z.object({ url: z.string().max(500), caption: optStr(200) }))
+    .min(1)
+    .max(20),
+  columns: z.union([z.literal(2), z.literal(3), z.literal(4)]).optional(),
+});
+
+const carouselPropsSchema = z.object({
+  heading: optStr(120),
+  subheading: optStr(300),
+  slides: z
+    .array(
+      z.object({
+        imageUrl: z.string().max(500),
+        title: optStr(120),
+        description: optStr(300),
+        badge: optStr(40),
+      })
+    )
+    .min(1)
+    .max(20),
+  autoPlay: z.boolean().optional(),
+});
+
+const countdownPropsSchema = z.object({
+  heading: optStr(120),
+  subheading: optStr(300),
+  targetDate: z.string().max(40),
+  ctaLabel: optStr(40),
+  ctaHref: optStr(500),
+  expiredMessage: optStr(200),
+});
+
+const twoColumnPropsSchema = z.object({
+  eyebrow: optStr(60),
+  heading: optStr(120),
+  body: optStr(800),
+  ctaLabel: optStr(40),
+  ctaHref: optStr(500),
+  imageUrl: optStr(500),
+  imageAlt: optStr(120),
+  layout: z.enum(["image-right", "image-left"]).optional(),
+});
+
 export const blockSchema = z.discriminatedUnion("type", [
   z.object({ id: z.string(), type: z.literal("hero"), props: heroPropsSchema }),
   z.object({ id: z.string(), type: z.literal("features"), props: featuresPropsSchema }),
@@ -138,6 +193,11 @@ export const blockSchema = z.discriminatedUnion("type", [
   z.object({ id: z.string(), type: z.literal("benefits"), props: benefitsPropsSchema }),
   z.object({ id: z.string(), type: z.literal("curriculum"), props: curriculumPropsSchema }),
   z.object({ id: z.string(), type: z.literal("social-proof"), props: socialProofPropsSchema }),
+  z.object({ id: z.string(), type: z.literal("video"), props: videoPropsSchema }),
+  z.object({ id: z.string(), type: z.literal("gallery"), props: galleryPropsSchema }),
+  z.object({ id: z.string(), type: z.literal("carousel"), props: carouselPropsSchema }),
+  z.object({ id: z.string(), type: z.literal("countdown"), props: countdownPropsSchema }),
+  z.object({ id: z.string(), type: z.literal("two-column"), props: twoColumnPropsSchema }),
 ]);
 
 export const themeSchema = z.object({

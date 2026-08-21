@@ -895,3 +895,19 @@ model TelegramConnectionAudit {
   @@index([actorId])
   @@index([createdAt])
 }
+
+model TelegramBroadcast {
+  id             String   @id @default(cuid())
+  message        String   @db.Text
+  sentById       String
+  targetType     String   // "all" | "roles" | "users"
+  targetRoles    String[] // UserRole values when targetType = "roles"
+  targetUserIds  String[] // User IDs when targetType = "users"
+  recipientCount Int      @default(0)
+  sentCount      Int      @default(0)
+  failedCount    Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  @@index([sentById])
+  @@index([createdAt])
+}

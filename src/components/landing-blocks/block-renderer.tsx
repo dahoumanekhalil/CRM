@@ -11,6 +11,11 @@ import { TestimonialsBlock } from "./testimonials";
 import { BenefitsBlock } from "./benefits";
 import { CurriculumBlock } from "./curriculum";
 import { SocialProofBlock } from "./social-proof";
+import { VideoBlock } from "./video";
+import { GalleryBlock } from "./gallery";
+import { CarouselBlock } from "./carousel";
+import { CountdownBlock } from "./countdown";
+import { TwoColumnBlock } from "./two-column";
 import { AnimatedSection } from "./animated-section";
 
 // Dispatch on discriminated union — TS narrows correctly per case.
@@ -44,6 +49,16 @@ export function BlockRenderer({
       return <CurriculumBlock props={block.props} />;
     case "social-proof":
       return <SocialProofBlock props={block.props} />;
+    case "video":
+      return <VideoBlock props={block.props} />;
+    case "gallery":
+      return <GalleryBlock props={block.props} />;
+    case "carousel":
+      return <CarouselBlock props={block.props} />;
+    case "countdown":
+      return <CountdownBlock props={block.props} />;
+    case "two-column":
+      return <TwoColumnBlock props={block.props} />;
     default: {
       const _exhaustive: never = block;
       return null;

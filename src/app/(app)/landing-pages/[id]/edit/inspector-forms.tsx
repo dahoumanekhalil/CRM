@@ -5,16 +5,21 @@ import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import type {
   BenefitsProps,
+  CarouselProps,
+  CountdownProps,
   CTAProps,
   CurriculumProps,
   FAQProps,
   FeaturesProps,
   FormProps,
+  GalleryProps,
   HeroProps,
   InstructorProps,
   PricingProps,
   SocialProofProps,
   TestimonialsProps,
+  TwoColumnProps,
+  VideoProps,
 } from "@/lib/landing-blocks/types";
 import {
   Field,
@@ -875,5 +880,349 @@ function ToggleField({
         className="size-4 rounded border-input"
       />
     </label>
+  );
+}
+
+// ── Video ─────────────────────────────────────────────────────────────────────
+
+export function VideoForm({
+  value,
+  onChange,
+}: {
+  value: VideoProps;
+  onChange: (next: VideoProps) => void;
+}) {
+  const patch = patcher(value, onChange);
+  return (
+    <>
+      <InspectorSection title="Content">
+        <TextField
+          label="Heading"
+          value={value.heading}
+          onChange={(v) => patch({ heading: v })}
+        />
+        <TextAreaField
+          label="Subheading"
+          value={value.subheading}
+          onChange={(v) => patch({ subheading: v })}
+        />
+      </InspectorSection>
+      <InspectorSection title="Video">
+        <TextField
+          label="YouTube or Vimeo URL"
+          hint="Paste any YouTube or Vimeo link — we'll embed it automatically."
+          type="url"
+          value={value.url}
+          onChange={(v) => patch({ url: v })}
+          placeholder="https://youtube.com/watch?v=…"
+        />
+        <SegmentedField
+          label="Aspect ratio"
+          value={value.aspectRatio ?? "16/9"}
+          onChange={(v) => patch({ aspectRatio: v })}
+          options={[
+            { value: "16/9", label: "16:9" },
+            { value: "4/3", label: "4:3" },
+            { value: "1/1", label: "Square" },
+          ]}
+        />
+        <TextField
+          label="Caption"
+          hint="Optional text shown below the video."
+          value={value.caption}
+          onChange={(v) => patch({ caption: v })}
+        />
+      </InspectorSection>
+    </>
+  );
+}
+
+// ── Gallery ───────────────────────────────────────────────────────────────────
+
+export function GalleryForm({
+  value,
+  onChange,
+}: {
+  value: GalleryProps;
+  onChange: (next: GalleryProps) => void;
+}) {
+  const patch = patcher(value, onChange);
+  const setImg = (i: number, next: Partial<GalleryProps["images"][number]>) => {
+    const images = value.images.map((img, idx) =>
+      idx === i ? { ...img, ...next } : img
+    );
+    patch({ images });
+  };
+
+  return (
+    <>
+      <InspectorSection title="Heading">
+        <TextField
+          label="Heading"
+          value={value.heading}
+          onChange={(v) => patch({ heading: v })}
+        />
+        <TextAreaField
+          label="Subheading"
+          value={value.subheading}
+          onChange={(v) => patch({ subheading: v })}
+        />
+      </InspectorSection>
+      <InspectorSection title="Layout">
+        <SegmentedField
+          label="Columns"
+          value={String(value.columns ?? 3) as "2" | "3" | "4"}
+          onChange={(v) => patch({ columns: Number(v) as 2 | 3 | 4 })}
+          options={[
+            { value: "2", label: "2" },
+            { value: "3", label: "3" },
+            { value: "4", label: "4" },
+          ]}
+        />
+      </InspectorSection>
+      <InspectorSection title="Images">
+        <Repeater
+          label="Images"
+          items={value.images}
+          min={1}
+          max={20}
+          addLabel="Add image"
+          onAdd={() => patch({ images: [...value.images, { url: "", caption: "" }] })}
+          onRemove={(i) => patch({ images: value.images.filter((_, idx) => idx !== i) })}
+          renderItem={(img, i) => (
+            <>
+              <TextField
+                label="Image URL"
+                type="url"
+                value={img.url}
+                onChange={(v) => setImg(i, { url: v })}
+                placeholder="https://…"
+              />
+              <TextField
+                label="Caption (optional)"
+                value={img.caption}
+                onChange={(v) => setImg(i, { caption: v })}
+              />
+            </>
+          )}
+        />
+      </InspectorSection>
+    </>
+  );
+}
+
+// ── Carousel ──────────────────────────────────────────────────────────────────
+
+export function CarouselForm({
+  value,
+  onChange,
+}: {
+  value: CarouselProps;
+  onChange: (next: CarouselProps) => void;
+}) {
+  const patch = patcher(value, onChange);
+  const setSlide = (i: number, next: Partial<CarouselProps["slides"][number]>) => {
+    const slides = value.slides.map((s, idx) =>
+      idx === i ? { ...s, ...next } : s
+    );
+    patch({ slides });
+  };
+
+  return (
+    <>
+      <InspectorSection title="Heading">
+        <TextField
+          label="Heading"
+          value={value.heading}
+          onChange={(v) => patch({ heading: v })}
+        />
+        <TextAreaField
+          label="Subheading"
+          value={value.subheading}
+          onChange={(v) => patch({ subheading: v })}
+        />
+      </InspectorSection>
+      <InspectorSection title="Settings">
+        <ToggleField
+          label="Auto-play"
+          value={value.autoPlay ?? true}
+          onChange={(v) => patch({ autoPlay: v })}
+        />
+      </InspectorSection>
+      <InspectorSection title="Slides">
+        <Repeater
+          label="Slides"
+          items={value.slides}
+          min={1}
+          max={20}
+          addLabel="Add slide"
+          onAdd={() =>
+            patch({ slides: [...value.slides, { imageUrl: "", title: "", description: "" }] })
+          }
+          onRemove={(i) => patch({ slides: value.slides.filter((_, idx) => idx !== i) })}
+          renderItem={(slide, i) => (
+            <>
+              <TextField
+                label="Image URL"
+                type="url"
+                value={slide.imageUrl}
+                onChange={(v) => setSlide(i, { imageUrl: v })}
+                placeholder="https://…"
+              />
+              <TextField
+                label="Badge (optional)"
+                value={slide.badge}
+                onChange={(v) => setSlide(i, { badge: v })}
+                placeholder="e.g. Day 1"
+              />
+              <TextField
+                label="Title (optional)"
+                value={slide.title}
+                onChange={(v) => setSlide(i, { title: v })}
+              />
+              <TextField
+                label="Description (optional)"
+                value={slide.description}
+                onChange={(v) => setSlide(i, { description: v })}
+              />
+            </>
+          )}
+        />
+      </InspectorSection>
+    </>
+  );
+}
+
+// ── Countdown ─────────────────────────────────────────────────────────────────
+
+export function CountdownForm({
+  value,
+  onChange,
+}: {
+  value: CountdownProps;
+  onChange: (next: CountdownProps) => void;
+}) {
+  const patch = patcher(value, onChange);
+  return (
+    <>
+      <InspectorSection title="Content">
+        <TextField
+          label="Heading"
+          value={value.heading}
+          onChange={(v) => patch({ heading: v })}
+        />
+        <TextAreaField
+          label="Subheading"
+          value={value.subheading}
+          onChange={(v) => patch({ subheading: v })}
+        />
+      </InspectorSection>
+      <InspectorSection title="Deadline">
+        <Field label="Target date & time" hint="When the countdown reaches zero, the expired message is shown.">
+          <input
+            type="datetime-local"
+            value={value.targetDate ?? ""}
+            onChange={(e) => patch({ targetDate: e.target.value })}
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none transition-shadow focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+          />
+        </Field>
+        <TextField
+          label="Expired message"
+          hint="Shown after the deadline passes."
+          value={value.expiredMessage}
+          onChange={(v) => patch({ expiredMessage: v })}
+          placeholder="Registration is now closed."
+        />
+      </InspectorSection>
+      <InspectorSection title="Call to action">
+        <TextField
+          label="Button label"
+          value={value.ctaLabel}
+          onChange={(v) => patch({ ctaLabel: v })}
+        />
+        <TextField
+          label="Button link"
+          type="url"
+          value={value.ctaHref}
+          onChange={(v) => patch({ ctaHref: v })}
+          placeholder="#register"
+        />
+      </InspectorSection>
+    </>
+  );
+}
+
+// ── Two-column ────────────────────────────────────────────────────────────────
+
+export function TwoColumnForm({
+  value,
+  onChange,
+}: {
+  value: TwoColumnProps;
+  onChange: (next: TwoColumnProps) => void;
+}) {
+  const patch = patcher(value, onChange);
+  return (
+    <>
+      <InspectorSection title="Content">
+        <TextField
+          label="Eyebrow"
+          hint="Small label above the heading."
+          value={value.eyebrow}
+          onChange={(v) => patch({ eyebrow: v })}
+        />
+        <TextField
+          label="Heading"
+          value={value.heading}
+          onChange={(v) => patch({ heading: v })}
+        />
+        <TextAreaField
+          label="Body"
+          rows={4}
+          value={value.body}
+          onChange={(v) => patch({ body: v })}
+        />
+      </InspectorSection>
+      <InspectorSection title="Call to action">
+        <TextField
+          label="Button label"
+          value={value.ctaLabel}
+          onChange={(v) => patch({ ctaLabel: v })}
+        />
+        <TextField
+          label="Button link"
+          type="url"
+          value={value.ctaHref}
+          onChange={(v) => patch({ ctaHref: v })}
+          placeholder="#register"
+        />
+      </InspectorSection>
+      <InspectorSection title="Image">
+        <TextField
+          label="Image URL"
+          type="url"
+          value={value.imageUrl}
+          onChange={(v) => patch({ imageUrl: v })}
+          placeholder="https://…"
+        />
+        <TextField
+          label="Alt text"
+          hint="Describe the image for screen readers."
+          value={value.imageAlt}
+          onChange={(v) => patch({ imageAlt: v })}
+        />
+      </InspectorSection>
+      <InspectorSection title="Layout">
+        <SegmentedField
+          label="Image position"
+          value={value.layout ?? "image-right"}
+          onChange={(v) => patch({ layout: v })}
+          options={[
+            { value: "image-right", label: "Right" },
+            { value: "image-left", label: "Left" },
+          ]}
+        />
+      </InspectorSection>
+    </>
   );
 }
