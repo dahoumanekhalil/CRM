@@ -58,3 +58,6 @@ prisma/migrate-*.ts
 
 # Raw data files used only during development
 algeria_cities.csv
+
+# Production config folder — contains secrets, never commit
+/_production
