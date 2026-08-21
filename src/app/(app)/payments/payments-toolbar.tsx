@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/use-t";
 
 import { paymentFilters } from "./payments-filters";
 import {
@@ -43,6 +44,7 @@ export function PaymentsToolbar({
   total: number;
   onNewPayment: () => void;
 }) {
+  const t = useT();
   const [filters, setFilters] = useQueryStates(paymentFilters);
 
   const hasActiveFilters =
@@ -59,7 +61,7 @@ export function PaymentsToolbar({
             containerClassName="flex-1"
             value={filters.q}
             onChange={(v) => setFilters({ q: v, page: 1 })}
-            placeholder="Search by student, reference…"
+            placeholder={t("Search by student, reference…")}
           />
           <Select
             value={filters.method}
@@ -74,10 +76,10 @@ export function PaymentsToolbar({
               <SelectValue placeholder="Method" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">All methods</SelectItem>
+              <SelectItem value="ALL">{t("All methods")}</SelectItem>
               {PAYMENT_METHODS.map((m) => (
                 <SelectItem key={m} value={m}>
-                  {humanize(m)}
+                  {t(humanize(m))}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -99,7 +101,7 @@ export function PaymentsToolbar({
               }
               className="text-muted-foreground hover:text-foreground"
             >
-              <X className="size-3.5" /> Clear
+              <X className="size-3.5" /> {t("Clear")}
             </Button>
           ) : null}
           <CsvExportButton
@@ -114,7 +116,7 @@ export function PaymentsToolbar({
             }
           />
           <Button onClick={onNewPayment} size="sm">
-            <Plus /> Record payment
+            <Plus /> {t("Record payment")}
           </Button>
         </div>
       </div>
@@ -134,7 +136,7 @@ export function PaymentsToolbar({
                   : "border-border/70 text-muted-foreground hover:border-border hover:text-foreground"
               )}
             >
-              {tab.label}
+              {t(tab.label)}
               {tab.value === "ALL" ? (
                 <span className="ms-1.5 opacity-70 tabular-nums">{total}</span>
               ) : null}

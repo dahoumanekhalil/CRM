@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useT } from "@/lib/i18n/use-t";
 
 interface DataTablePaginationProps {
   page: number; // 1-indexed
@@ -30,6 +31,7 @@ export function DataTablePagination({
   pageSizeOptions = [10, 25, 50, 100],
   selectedCount = 0,
 }: DataTablePaginationProps) {
+  const t = useT();
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const canPrev = page > 1;
   const canNext = page < totalPages;
@@ -42,12 +44,12 @@ export function DataTablePagination({
         {selectedCount > 0 ? (
           <>
             <span className="font-medium text-foreground">{selectedCount}</span>{" "}
-            selected of {totalItems.toLocaleString()}
+            {t("selected of")} {totalItems.toLocaleString()}
           </>
         ) : (
           <>
-            Showing <span className="font-medium text-foreground">{start.toLocaleString()}</span>–
-            <span className="font-medium text-foreground">{end.toLocaleString()}</span> of{" "}
+            {t("Showing")} <span className="font-medium text-foreground">{start.toLocaleString()}</span>–
+            <span className="font-medium text-foreground">{end.toLocaleString()}</span> {t("of")}{" "}
             <span className="font-medium text-foreground">{totalItems.toLocaleString()}</span>
           </>
         )}
@@ -55,7 +57,7 @@ export function DataTablePagination({
       <div className="flex items-center gap-2">
         {onPageSizeChange ? (
           <div className="hidden items-center gap-2 sm:flex">
-            <span className="text-xs text-muted-foreground">Rows per page</span>
+            <span className="text-xs text-muted-foreground">{t("Rows per page")}</span>
             <Select
               value={String(pageSize)}
               onValueChange={(v) => onPageSizeChange(Number(v))}
@@ -74,7 +76,7 @@ export function DataTablePagination({
           </div>
         ) : null}
         <div className="text-xs text-muted-foreground tabular-nums">
-          Page {page} / {totalPages}
+          {t("Page")} {page} / {totalPages}
         </div>
         <div className="flex items-center gap-1">
           <Button

@@ -1,10 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { format } from "date-fns";
 import type { Prisma, SessionStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { requirePermissionAction } from "@/lib/auth-guards";
+import { NotificationService } from "@/lib/notifications/notification-service";
+import { NotificationTypes } from "@/lib/notifications/types";
 import {
   listAttendanceSchema,
   recordAttendanceSchema,
@@ -169,6 +172,61 @@ export async function recordAttendance(
     if (courseSession.course?.slug) {
       revalidatePath(`/courses/${courseSession.course.slug}`);
     }
+
+    // Fire attendance.noShow notifications for ABSENT students.
+    const absentEntries = d.entries.filter((e) => e.status === "ABSENT");
+    if (absentEntries.length > 0) {
+      void (async () => {
+        const [registrations, managers, courseDetail] = await Promise.all([
+          prisma.registration.findMany({
+            where: { id: { in: absentEntries.map((e) => e.registrationId) } },
+            select: {
+              id: true,
+              salesOwnerId: true,
+              student: { select: { firstName: true, lastName: true } },
+            },
+          }),
+          prisma.user.findMany({
+            where: { role: { in: ["ADMIN", "MANAGER"] } },
+            select: { id: true },
+          }),
+          prisma.courseSession.findUnique({
+            where: { id: d.sessionId },
+            select: { course: { select: { name: true, slug: true } } },
+          }),
+        ]);
+
+        const courseName = courseDetail?.course?.name ?? "—";
+        const courseSlug = courseDetail?.course?.slug ?? "";
+        const sessionDateStr = format(sessionDate, "MMM d, yyyy");
+
+        for (const reg of registrations) {
+          const studentName = [reg.student.firstName, reg.student.lastName].filter(Boolean).join(" ");
+          const recipients = new Set([
+            ...managers.map((m) => m.id),
+            ...(reg.salesOwnerId ? [reg.salesOwnerId] : []),
+          ]);
+          for (const recipientId of recipients) {
+            NotificationService.send({
+              recipientId,
+              type: NotificationTypes.ATTENDANCE_NO_SHOW,
+              priority: "NORMAL",
+              entityType: "Registration",
+              entityId: reg.id,
+              payload: {
+                title: "No Show",
+                body: `${studentName} — ${courseName}`,
+                studentName,
+                courseName,
+                courseSlug,
+                sessionDate: sessionDateStr,
+              },
+            });
+          }
+        }
+      })();
+    }
+
     return { ok: true, data: { count: d.entries.length } };
   } catch (err) {
     console.error("recordAttendance failed", err);

@@ -8,6 +8,7 @@ import { Wallet } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/primitives/empty-state";
+import { useT } from "@/lib/i18n/use-t";
 import { PaymentsToolbar } from "./payments-toolbar";
 import { PaymentsTable } from "./payments-table";
 import { PaymentSheet } from "./payment-sheet";
@@ -31,14 +32,15 @@ function OutstandingBalancesTable({
   rows: OutstandingBalanceRow[];
   students: PaymentStudentPickerItem[];
 }) {
+  const t = useT();
   const [recordFor, setRecordFor] = React.useState<OutstandingBalanceRow | null>(null);
 
   if (rows.length === 0) {
     return (
       <EmptyState
         icon={Wallet}
-        title="No outstanding balances"
-        description="All registrations are either fully paid or have no agreed price set."
+        title={t("No outstanding balances")}
+        description={t("All registrations are either fully paid or have no agreed price set.")}
       />
     );
   }
@@ -48,10 +50,10 @@ function OutstandingBalancesTable({
       <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
         <header className="border-b border-border/60 px-4 py-3">
           <h2 className="text-sm font-semibold tracking-tight">
-            Outstanding Balances
+            {t("Outstanding Balances")}
           </h2>
           <p className="text-xs text-muted-foreground">
-            {rows.length} registration{rows.length !== 1 ? "s" : ""} with unpaid balance
+            {rows.length} {rows.length !== 1 ? t("registrations with unpaid balance") : t("registration with unpaid balance")}
           </p>
         </header>
         <ul className="divide-y divide-border/60">
@@ -82,7 +84,7 @@ function OutstandingBalancesTable({
                           : "rounded-full bg-amber-500/10 px-1.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400"
                       }
                     >
-                      {r.paymentStatus === "UNPAID" ? "Unpaid" : "Partially paid"}
+                      {r.paymentStatus === "UNPAID" ? t("Unpaid") : t("Partially paid")}
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground">
@@ -94,19 +96,19 @@ function OutstandingBalancesTable({
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 text-xs">
                     <span>
-                      <span className="text-muted-foreground">Agreed: </span>
+                      <span className="text-muted-foreground">{t("Agreed:")} </span>
                       <span className="font-medium tabular-nums">
                         {formatMoney(r.agreedPrice)}
                       </span>
                     </span>
                     <span>
-                      <span className="text-muted-foreground">Paid: </span>
+                      <span className="text-muted-foreground">{t("Paid:")} </span>
                       <span className="font-medium tabular-nums text-green-700 dark:text-green-400">
                         {formatMoney(r.totalPaid)}
                       </span>
                     </span>
                     <span>
-                      <span className="text-muted-foreground">Remaining: </span>
+                      <span className="text-muted-foreground">{t("Remaining:")} </span>
                       <span className="font-semibold tabular-nums text-destructive">
                         {formatMoney(r.remaining)}
                       </span>
@@ -119,7 +121,7 @@ function OutstandingBalancesTable({
                   className="h-7 shrink-0 text-xs"
                   onClick={() => setRecordFor(r)}
                 >
-                  Record payment
+                  {t("Record payment")}
                 </Button>
               </li>
             );

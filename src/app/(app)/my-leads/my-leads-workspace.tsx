@@ -16,6 +16,7 @@ import {
 
 import { StatusBadge } from "@/components/primitives/status-badge";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/use-t";
 import { markLeadViewed } from "./actions";
 import type { MyLeadsWorkspace } from "./actions";
 
@@ -39,8 +40,9 @@ function LeadCard({
   timeTone?: "danger" | "warning" | "neutral";
   showNewBadge?: boolean;
 }) {
+  const t = useT();
   const fullName =
-    [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "Unnamed lead";
+    [lead.firstName, lead.lastName].filter(Boolean).join(" ") || t("Unnamed lead");
 
   return (
     <Link
@@ -58,7 +60,7 @@ function LeadCard({
             <StatusBadge status={lead.status} />
             {showNewBadge ? (
               <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground leading-none">
-                New
+                {t("New")}
               </span>
             ) : null}
           </div>
@@ -184,11 +186,11 @@ function Zone({
 
 // ── Pipeline status row ────────────────────────────────────────────────────────
 
-const PIPELINE_STAGES: Array<{ key: string; label: string }> = [
-  { key: "CONTACTED", label: "Contacted" },
-  { key: "INTERESTED", label: "Interested" },
-  { key: "CONFIRMED", label: "Confirmed" },
-  { key: "REGISTERED", label: "Registered" },
+const PIPELINE_STAGES: Array<{ key: string }> = [
+  { key: "CONTACTED" },
+  { key: "INTERESTED" },
+  { key: "CONFIRMED" },
+  { key: "REGISTERED" },
 ];
 
 // ── Main workspace component ───────────────────────────────────────────────────
@@ -198,6 +200,7 @@ export function MyLeadsWorkspace({
 }: {
   workspace: MyLeadsWorkspace;
 }) {
+  const t = useT();
   const { overdue, dueToday, newLeads, pipelineCounts, totalActive } = workspace;
   const todayCount = overdue.length + dueToday.length;
 
@@ -207,16 +210,16 @@ export function MyLeadsWorkspace({
       <Zone
         id="today"
         icon={<AlertCircle className="size-4" />}
-        title="Today"
+        title={t("Today")}
         count={todayCount}
         tone={overdue.length > 0 ? "danger" : "warning"}
-        emptyMessage="No follow-ups due — you're all caught up."
+        emptyMessage={t("No follow-ups due — you're all caught up.")}
         defaultOpen={todayCount > 0}
       >
         {overdue.length > 0 ? (
           <div className="space-y-2">
             <p className="text-[11px] font-medium uppercase tracking-wider text-destructive/70">
-              Overdue
+              {t("Overdue")}
             </p>
             {overdue.map((lead) => (
               <LeadCard
@@ -236,7 +239,7 @@ export function MyLeadsWorkspace({
         {dueToday.length > 0 ? (
           <div className="space-y-2">
             <p className="text-[11px] font-medium uppercase tracking-wider text-warning/70">
-              Due today
+              {t("Due today")}
             </p>
             {dueToday.map((lead) => (
               <LeadCard
@@ -245,7 +248,7 @@ export function MyLeadsWorkspace({
                 timeLabel={
                   lead.nextActionDue
                     ? format(new Date(lead.nextActionDue), "h:mm a")
-                    : "Today"
+                    : t("Today")
                 }
                 timeTone="warning"
               />
@@ -258,10 +261,10 @@ export function MyLeadsWorkspace({
       <Zone
         id="new"
         icon={<Star className="size-4" />}
-        title="New Leads"
+        title={t("New Leads")}
         count={newLeads.length}
         tone="warning"
-        emptyMessage="No new leads assigned yet."
+        emptyMessage={t("No new leads assigned yet.")}
         defaultOpen={newLeads.length > 0}
       >
         {newLeads.map((lead) => (
@@ -279,10 +282,10 @@ export function MyLeadsWorkspace({
       <Zone
         id="pipeline"
         icon={<Users2 className="size-4" />}
-        title="Pipeline"
+        title={t("Pipeline")}
         count={totalActive}
         tone="neutral"
-        emptyMessage="No active leads in the pipeline."
+        emptyMessage={t("No active leads in the pipeline.")}
         defaultOpen
       >
         <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
@@ -309,7 +312,7 @@ export function MyLeadsWorkspace({
           href="/my-leads?view=table"
           className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
         >
-          View all as table <ChevronRight className="size-3" />
+          {t("View all as table")} <ChevronRight className="size-3" />
         </Link>
       </Zone>
     </div>

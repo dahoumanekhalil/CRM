@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { format } from "date-fns";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requirePermissionAction } from "@/lib/auth-guards";
@@ -22,6 +23,84 @@ import { NotificationTypes } from "@/lib/notifications/types";
 import { normalizeEmail, normalizePhone } from "@/lib/string-utils";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
+
+// After a registration is created, check capacity thresholds and fire alerts.
+// Thresholds: 80% and 90%. Deduplication is handled by the in-app provider
+// and the entityId pattern (sessionId:threshold).
+async function fireCourseRunCapacityAlerts(
+  sessionId: string,
+  taken: number,
+  capacity: number,
+  courseName: string,
+  courseSlug: string,
+): Promise<void> {
+  if (capacity <= 0) return;
+  const pct = (taken / capacity) * 100;
+
+  const managers = await prisma.user.findMany({
+    where: { role: { in: ["ADMIN", "MANAGER"] } },
+    select: { id: true },
+  });
+
+  if (taken >= capacity) {
+    for (const m of managers) {
+      NotificationService.send({
+        recipientId: m.id,
+        type: NotificationTypes.COURSE_RUN_CAPACITY_REACHED,
+        priority: "CRITICAL",
+        entityType: "Session",
+        entityId: `${sessionId}:full`,
+        payload: {
+          title: "Course Run Full",
+          body: `${courseName} — ${capacity}/${capacity} seats filled`,
+          courseName,
+          courseSlug,
+          filled: capacity,
+          capacity,
+        },
+      });
+    }
+    return;
+  }
+
+  if (pct >= 90) {
+    for (const m of managers) {
+      NotificationService.send({
+        recipientId: m.id,
+        type: NotificationTypes.COURSE_RUN_NEAR_CAPACITY,
+        priority: "HIGH",
+        entityType: "Session",
+        entityId: `${sessionId}:90`,
+        payload: {
+          title: "Course Run Near Capacity",
+          body: `${courseName} — ${taken}/${capacity} seats filled`,
+          courseName,
+          courseSlug,
+          filled: taken,
+          capacity,
+        },
+      });
+    }
+  } else if (pct >= 80) {
+    for (const m of managers) {
+      NotificationService.send({
+        recipientId: m.id,
+        type: NotificationTypes.COURSE_RUN_NEAR_CAPACITY,
+        priority: "NORMAL",
+        entityType: "Session",
+        entityId: `${sessionId}:80`,
+        payload: {
+          title: "Course Run Near Capacity",
+          body: `${courseName} — ${taken}/${capacity} seats filled`,
+          courseName,
+          courseSlug,
+          filled: taken,
+          capacity,
+        },
+      });
+    }
+  }
+}
 
 export type PotentialDuplicate = {
   type: "lead" | "student";
@@ -616,9 +695,7 @@ export async function convertLead(
     const taken = await prisma.registration.count({
       where: {
         sessionId: d.sessionId,
-        status: {
-          in: ["PENDING", "CONFIRMED", "ATTENDING", "COMPLETED"],
-        },
+        status: { in: ["PENDING", "CONFIRMED", "ATTENDING", "COMPLETED"] },
       },
     });
     if (taken >= courseSession.capacity) {
@@ -627,6 +704,15 @@ export async function convertLead(
         data: { status: "FULL" },
       });
     }
+
+    // Fire capacity alerts asynchronously — never blocks registration.
+    void fireCourseRunCapacityAlerts(
+      d.sessionId,
+      taken,
+      courseSession.capacity,
+      courseSession.course?.slug ? (await prisma.course.findUnique({ where: { slug: courseSession.course.slug }, select: { name: true } }))?.name ?? "" : "",
+      courseSession.course?.slug ?? "",
+    );
 
     if (courseSession.course?.slug) {
       revalidatePath(`/courses/${courseSession.course.slug}`);
@@ -651,6 +737,52 @@ export async function convertLead(
     userId: session.user.id,
     meta: { studentId },
   });
+
+  // Notify managers when a registration is confirmed (business-critical event).
+  if (registrationId && d.registrationStatus === "CONFIRMED") {
+    void (async () => {
+      const [courseSession, managers] = await Promise.all([
+        d.sessionId
+          ? prisma.courseSession.findUnique({
+              where: { id: d.sessionId },
+              select: {
+                startDate: true,
+                course: { select: { name: true } },
+              },
+            })
+          : null,
+        prisma.user.findMany({
+          where: { role: { in: ["ADMIN", "MANAGER"] } },
+          select: { id: true },
+        }),
+      ]);
+      const studentName = [lead.firstName, lead.lastName].filter(Boolean).join(" ");
+      const courseName = courseSession?.course?.name ?? "—";
+      const sessionDate = courseSession ? format(courseSession.startDate, "MMM d, yyyy") : "—";
+      const salesRepName = session.user.name ?? session.user.email ?? "—";
+
+      for (const m of managers) {
+        if (m.id === session.user.id) continue; // don't notify the rep who did it
+        NotificationService.send({
+          recipientId: m.id,
+          type: NotificationTypes.REGISTRATION_CONFIRMED,
+          priority: "NORMAL",
+          entityType: "Registration",
+          entityId: registrationId,
+          payload: {
+            title: "New Confirmed Registration",
+            body: `${studentName} — ${courseName}`,
+            studentName,
+            studentId,
+            courseName,
+            sessionDate,
+            salesRepName,
+            paymentStatus: "Unpaid",
+          },
+        });
+      }
+    })();
+  }
 
   revalidatePath("/leads");
   revalidatePath(`/leads/${lead.id}`);
@@ -849,20 +981,26 @@ export async function updateLeadOwner(
       meta: { from: lead.ownerId, to: newOwnerId, toName: targetUser?.name ?? null },
     });
 
-    // Notify the new owner if they differ from the assigner.
+    // Notify the new owner — distinguish fresh assignment from reassignment.
     if (newOwnerId && newOwnerId !== session.user.id) {
       const leadName = [lead.firstName, lead.lastName].filter(Boolean).join(" ");
+      const isReassignment = !!lead.ownerId && lead.ownerId !== newOwnerId;
+      const prevOwner = isReassignment && lead.ownerId
+        ? await prisma.user.findUnique({ where: { id: lead.ownerId }, select: { name: true } })
+        : null;
+
       NotificationService.send({
         recipientId: newOwnerId,
-        type: NotificationTypes.LEAD_ASSIGNED,
+        type: isReassignment ? NotificationTypes.LEAD_REASSIGNED : NotificationTypes.LEAD_ASSIGNED,
         entityType: "Lead",
         entityId: leadId,
         payload: {
-          title: "New lead assigned to you",
+          title: isReassignment ? "Lead assigned to you" : "New lead assigned to you",
           body: leadName,
           leadName,
           leadId,
           courseName: lead.course?.name ?? null,
+          fromRepName: prevOwner?.name ?? "another rep",
         },
       });
     }
@@ -1590,7 +1728,7 @@ export async function createRegistrationFromLead(
 
   const courseSession = await prisma.courseSession.findUnique({
     where: { id: sessionId },
-    select: { id: true, capacity: true, course: { select: { slug: true, name: true } } },
+    select: { id: true, startDate: true, capacity: true, course: { select: { slug: true, name: true } } },
   });
   if (!courseSession) return { ok: false, error: "Course run not found." };
 
@@ -1677,6 +1815,15 @@ export async function createRegistrationFromLead(
     await prisma.courseSession.update({ where: { id: sessionId }, data: { status: "FULL" } });
   }
 
+  // Fire capacity alerts asynchronously.
+  void fireCourseRunCapacityAlerts(
+    sessionId,
+    taken,
+    courseSession.capacity,
+    courseSession.course?.name ?? "",
+    courseSession.course?.slug ?? "",
+  );
+
   // Link student to lead and flip status to REGISTERED.
   await prisma.lead.update({
     where: { id: leadId },
@@ -1690,6 +1837,39 @@ export async function createRegistrationFromLead(
     userId: authSession.user.id,
     meta: { studentId, registrationId, reused, courseName: courseSession.course?.name ?? null },
   });
+
+  // Notify managers of the confirmed registration.
+  void (async () => {
+    const managers = await prisma.user.findMany({
+      where: { role: { in: ["ADMIN", "MANAGER"] } },
+      select: { id: true },
+    });
+    const studentName = [lead.firstName, lead.lastName].filter(Boolean).join(" ");
+    const courseName = courseSession.course?.name ?? "—";
+    const sessionDate = format(courseSession.startDate, "MMM d, yyyy");
+    const salesRepName = authSession.user.name ?? authSession.user.email ?? "—";
+
+    for (const m of managers) {
+      if (m.id === authSession.user.id) continue;
+      NotificationService.send({
+        recipientId: m.id,
+        type: NotificationTypes.REGISTRATION_CONFIRMED,
+        priority: "NORMAL",
+        entityType: "Registration",
+        entityId: registrationId,
+        payload: {
+          title: "New Confirmed Registration",
+          body: `${studentName} — ${courseName}`,
+          studentName,
+          studentId: studentId!,
+          courseName,
+          sessionDate,
+          salesRepName,
+          paymentStatus: "Unpaid",
+        },
+      });
+    }
+  })();
 
   if (courseSession.course?.slug) revalidatePath(`/courses/${courseSession.course.slug}`);
   revalidatePath("/leads");

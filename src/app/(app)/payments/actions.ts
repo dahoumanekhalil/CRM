@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { format } from "date-fns";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requirePermissionAction } from "@/lib/auth-guards";
 import { NotificationService } from "@/lib/notifications/notification-service";
+import { NotificationTypes } from "@/lib/notifications/types";
 import { recordActivity } from "@/lib/activity";
 import {
   createPaymentSchema,
@@ -88,59 +90,152 @@ export async function createPayment(
       },
     });
 
-    // Notify Finance-side users when a payment is created and needs confirmation.
-    if (d.status === "PENDING") {
-      void (async () => {
-        const recipients = await prisma.user.findMany({
-          where: { role: { in: ["ADMIN", "MANAGER", "FINANCE"] } },
-          select: { id: true },
-        });
-        for (const u of recipients) {
+    // Fire payment notifications — never blocks the business transaction.
+    void (async () => {
+      // Fetch context for rich notification messages.
+      const [student, registration, recorder] = await Promise.all([
+        prisma.student.findUnique({
+          where: { id: d.studentId },
+          select: {
+            firstName: true,
+            lastName: true,
+            leads: {
+              select: { ownerId: true },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+            },
+          },
+        }),
+        d.registrationId
+          ? prisma.registration.findUnique({
+              where: { id: d.registrationId },
+              select: {
+                salesOwnerId: true,
+                agreedPrice: true,
+                session: {
+                  select: {
+                    startDate: true,
+                    price: true,
+                    course: { select: { name: true } },
+                  },
+                },
+                payments: {
+                  where: { status: "COMPLETED" },
+                  select: { amount: true },
+                },
+              },
+            })
+          : null,
+        prisma.user.findUnique({
+          where: { id: session.user.id },
+          select: { name: true },
+        }),
+      ]);
+
+      const studentName = [student?.firstName, student?.lastName].filter(Boolean).join(" ") || "Student";
+      const salesOwnerId = registration?.salesOwnerId ?? student?.leads[0]?.ownerId ?? null;
+      const courseName = registration?.session?.course?.name ?? "—";
+      const sessionDate = registration?.session?.startDate
+        ? format(registration.session.startDate, "MMM d, yyyy")
+        : "—";
+      const salesRepName = recorder?.name ?? session.user.email ?? "—";
+      const amountStr = Number(d.amount).toLocaleString();
+      const managers = await prisma.user.findMany({
+        where: { role: { in: ["ADMIN", "MANAGER", "FINANCE"] } },
+        select: { id: true },
+      });
+
+      if (d.status === "PENDING") {
+        // Payment needs confirmation — notify Finance/Admin/Manager.
+        for (const u of managers) {
           NotificationService.send({
             recipientId: u.id,
-            type: "payment.pending",
+            type: NotificationTypes.PAYMENT_PENDING,
+            priority: "HIGH",
             payload: {
               category: "ACTION_REQUIRED",
-              title: "New payment needs confirmation",
-              body: `Amount: ${Number(d.amount).toLocaleString()} ${d.currency}`,
-              priority: 1,
+              title: "Payment awaiting confirmation",
+              body: `${studentName} — ${amountStr} ${d.currency}`,
+              studentName,
+              amount: amountStr,
+              currency: d.currency,
+              method: d.method,
             },
             entityType: "Payment",
             entityId: created.id,
           });
         }
-      })();
-    }
+      }
 
-    // Notify the Sales rep who owns this student when a completed payment is recorded.
-    if (d.status === "COMPLETED") {
-      void (async () => {
-        const student = await prisma.student.findUnique({
-          where: { id: d.studentId },
-          select: {
-            firstName: true,
-            lastName: true,
-            leads: { select: { ownerId: true }, orderBy: { createdAt: "desc" }, take: 1 },
-          },
-        });
-        const ownerId = student?.leads[0]?.ownerId ?? null;
-        if (!ownerId) return;
-        const name = [student?.firstName, student?.lastName].filter(Boolean).join(" ") || "Student";
-        NotificationService.send({
-          recipientId: ownerId,
-          type: "payment.recorded",
-          payload: {
-            title: "Payment recorded",
-            body: `${name} — ${Number(d.amount).toLocaleString()} ${d.currency} — Paid`,
-            studentName: name,
-            amount: String(d.amount),
-            currency: d.currency,
-          },
-          entityType: "Payment",
-          entityId: created.id,
-        });
-      })();
-    }
+      if (d.status === "COMPLETED") {
+        // Rich payment.recorded notification to Sales owner and Managers.
+        const allRecipients = new Set([
+          ...managers.map((m) => m.id),
+          ...(salesOwnerId ? [salesOwnerId] : []),
+        ]);
+        for (const recipientId of allRecipients) {
+          if (recipientId === session.user.id) continue; // don't notify the person who just entered it
+          NotificationService.send({
+            recipientId,
+            type: NotificationTypes.PAYMENT_RECORDED,
+            priority: "NORMAL",
+            payload: {
+              title: "Payment recorded",
+              body: `${studentName} — ${amountStr} ${d.currency}`,
+              studentName,
+              amount: amountStr,
+              currency: d.currency,
+              method: d.method,
+              courseName,
+              sessionDate,
+              salesRepName,
+            },
+            entityType: "Payment",
+            entityId: created.id,
+          });
+        }
+
+        // Check if balance is now cleared (totalPaid >= agreedPrice).
+        if (registration) {
+          const agreedPrice = registration.agreedPrice
+            ? Number(String(registration.agreedPrice))
+            : registration.session?.price
+              ? Number(String(registration.session.price))
+              : 0;
+          const prevPaid = registration.payments.reduce(
+            (sum, p) => sum + Number(String(p.amount)),
+            0,
+          );
+          const newTotal = prevPaid + Number(d.amount);
+          if (agreedPrice > 0 && newTotal >= agreedPrice && d.registrationId) {
+            const totalStr = newTotal.toLocaleString();
+            const clearRecipients = new Set([
+              ...managers.map((m) => m.id),
+              ...(salesOwnerId ? [salesOwnerId] : []),
+            ]);
+            for (const recipientId of clearRecipients) {
+              if (recipientId === session.user.id) continue;
+              NotificationService.send({
+                recipientId,
+                type: NotificationTypes.PAYMENT_BALANCE_CLEARED,
+                priority: "NORMAL",
+                payload: {
+                  title: "Balance cleared",
+                  body: `${studentName} — ${totalStr} ${d.currency}`,
+                  studentName,
+                  studentId: d.studentId,
+                  courseName,
+                  totalPaid: totalStr,
+                  currency: d.currency,
+                },
+                entityType: "Registration",
+                entityId: d.registrationId,
+              });
+            }
+          }
+        }
+      }
+    })();
 
     void recordActivity({
       type: "payment.recorded",
@@ -234,16 +329,42 @@ export async function updatePayment(
 
 export async function setPaymentStatus(
   id: string,
-  status: PaymentStatus
+  status: PaymentStatus,
+  rejectionReason?: string,
 ): Promise<Result<null>> {
-  await requireWritePayments();
+  const authSession = await requireWritePayments();
   const existing = await prisma.payment.findUnique({
     where: { id },
     select: {
       id: true,
+      amount: true,
+      currency: true,
+      method: true,
       studentId: true,
+      student: {
+        select: {
+          firstName: true,
+          lastName: true,
+          leads: { select: { ownerId: true }, orderBy: { createdAt: "desc" }, take: 1 },
+        },
+      },
       registration: {
-        select: { session: { select: { course: { select: { slug: true } } } } },
+        select: {
+          id: true,
+          salesOwnerId: true,
+          agreedPrice: true,
+          session: {
+            select: {
+              startDate: true,
+              price: true,
+              course: { select: { name: true, slug: true } },
+            },
+          },
+          payments: {
+            where: { status: "COMPLETED" },
+            select: { amount: true },
+          },
+        },
       },
     },
   });
@@ -262,6 +383,101 @@ export async function setPaymentStatus(
   revalidatePath(`/students/${existing.studentId}`);
   const slug = existing.registration?.session?.course?.slug ?? null;
   if (slug) revalidatePath(`/courses/${slug}`);
+
+  // Fire payment.confirmed / payment.rejected notifications.
+  if (status === "COMPLETED" || status === "FAILED") {
+    void (async () => {
+      const studentName = [existing.student.firstName, existing.student.lastName].filter(Boolean).join(" ") || "Student";
+      const salesOwnerId = existing.registration?.salesOwnerId ?? existing.student.leads[0]?.ownerId ?? null;
+      const amountStr = Number(String(existing.amount)).toLocaleString();
+      const managers = await prisma.user.findMany({
+        where: { role: { in: ["ADMIN", "MANAGER", "FINANCE"] } },
+        select: { id: true },
+      });
+      const recipients = new Set([
+        ...managers.map((m) => m.id),
+        ...(salesOwnerId ? [salesOwnerId] : []),
+      ]);
+
+      if (status === "COMPLETED") {
+        for (const recipientId of recipients) {
+          if (recipientId === authSession.user.id) continue;
+          NotificationService.send({
+            recipientId,
+            type: NotificationTypes.PAYMENT_CONFIRMED,
+            priority: "NORMAL",
+            entityType: "Payment",
+            entityId: id,
+            payload: {
+              title: "Payment confirmed",
+              body: `${studentName} — ${amountStr} ${existing.currency}`,
+              studentName,
+              amount: amountStr,
+              currency: existing.currency,
+              method: existing.method,
+            },
+          });
+        }
+
+        // Check for balance cleared after confirmation.
+        const reg = existing.registration;
+        if (reg) {
+          const agreedPrice = reg.agreedPrice
+            ? Number(String(reg.agreedPrice))
+            : reg.session?.price
+              ? Number(String(reg.session.price))
+              : 0;
+          const prevPaid = reg.payments.reduce((sum, p) => sum + Number(String(p.amount)), 0);
+          const newTotal = prevPaid + Number(String(existing.amount));
+          const courseName = reg.session?.course?.name ?? "—";
+
+          if (agreedPrice > 0 && newTotal >= agreedPrice) {
+            for (const recipientId of recipients) {
+              if (recipientId === authSession.user.id) continue;
+              NotificationService.send({
+                recipientId,
+                type: NotificationTypes.PAYMENT_BALANCE_CLEARED,
+                priority: "NORMAL",
+                entityType: "Registration",
+                entityId: reg.id,
+                payload: {
+                  title: "Balance cleared",
+                  body: `${studentName} — full payment confirmed`,
+                  studentName,
+                  studentId: existing.studentId,
+                  courseName,
+                  totalPaid: newTotal.toLocaleString(),
+                  currency: existing.currency,
+                },
+              });
+            }
+          }
+        }
+      }
+
+      if (status === "FAILED") {
+        for (const recipientId of recipients) {
+          if (recipientId === authSession.user.id) continue;
+          NotificationService.send({
+            recipientId,
+            type: NotificationTypes.PAYMENT_REJECTED,
+            priority: "HIGH",
+            entityType: "Payment",
+            entityId: id,
+            payload: {
+              title: "Payment rejected",
+              body: `${studentName} — ${amountStr} ${existing.currency}`,
+              studentName,
+              amount: amountStr,
+              currency: existing.currency,
+              reason: rejectionReason ?? "Could not be verified",
+            },
+          });
+        }
+      }
+    })();
+  }
+
   return { ok: true, data: null };
 }
 

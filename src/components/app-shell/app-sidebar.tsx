@@ -25,6 +25,7 @@ import { UserMenu } from "./user-menu";
 import { cn } from "@/lib/utils";
 import { hasPermission } from "@/lib/permissions";
 import { useDirection } from "@/lib/use-direction";
+import { useT } from "@/lib/i18n/use-t";
 import type { Session } from "next-auth";
 
 function isActive(pathname: string, item: NavItem) {
@@ -52,6 +53,7 @@ export function AppSidebar({
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const [dir] = useDirection();
+  const t = useT();
   // In RTL the nav drawer lives on the right, matching Arabic convention.
   const sidebarSide = dir === "rtl" ? "right" : "left";
 
@@ -75,7 +77,7 @@ export function AppSidebar({
               Webscale
             </p>
             <p className="truncate text-[11px] leading-tight text-muted-foreground">
-              Training CRM
+              {t("Training CRM")}
             </p>
           </div>
         </Link>
@@ -87,12 +89,12 @@ export function AppSidebar({
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  tooltip="Search — ⌘K"
+                  tooltip={t("Search — ⌘K")}
                   onClick={onOpenCommand}
                   className="text-muted-foreground hover:text-foreground"
                 >
                   <Command />
-                  <span>Search</span>
+                  <span>{t("Search")}</span>
                   <Kbd className="ms-auto">⌘K</Kbd>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -108,7 +110,7 @@ export function AppSidebar({
           return (
             <SidebarGroup key={i}>
               {group.label ? (
-                <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+                <SidebarGroupLabel>{t(group.label)}</SidebarGroupLabel>
               ) : null}
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -120,11 +122,11 @@ export function AppSidebar({
                         <SidebarMenuButton
                           asChild
                           isActive={active}
-                          tooltip={item.label}
+                          tooltip={t(item.label)}
                         >
                           <Link href={item.href}>
                             {Icon ? <Icon /> : null}
-                            <span>{item.label}</span>
+                            <span>{t(item.label)}</span>
                           </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>

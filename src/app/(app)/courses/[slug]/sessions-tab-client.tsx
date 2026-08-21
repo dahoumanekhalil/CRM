@@ -17,6 +17,7 @@ import {
 import { format } from "date-fns";
 
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/use-t";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { StatusBadge } from "@/components/primitives/status-badge";
@@ -96,6 +97,7 @@ function SessionCard({
   onRegister: () => void;
   onAttendance: () => void;
 }) {
+  const t = useT();
   const enrolled = s._count.registrations;
   const instructor = s.instructor
     ? [s.instructor.firstName, s.instructor.lastName].filter(Boolean).join(" ")
@@ -158,7 +160,7 @@ function SessionCard({
             ) : (
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <Users className="size-3.5" />
-                <span className="font-medium text-foreground">{enrolled}</span> enrolled
+                <span className="font-medium text-foreground">{enrolled}</span> {t("enrolled")}
               </span>
             )}
           </div>
@@ -174,7 +176,7 @@ function SessionCard({
               title={enrolled === 0 ? "No registered students yet" : undefined}
             >
               <ClipboardCheck className="size-3.5" />
-              Attendance
+              {t("Attendance")}
             </Button>
             <Button
               variant="outline"
@@ -183,7 +185,7 @@ function SessionCard({
               onClick={onRegister}
             >
               <UserPlus className="size-3.5" />
-              Register
+              {t("Register")}
             </Button>
             <Button
               variant="ghost"
@@ -199,7 +201,7 @@ function SessionCard({
         {/* "View roster" hover hint */}
         <div className="flex items-center gap-1 text-[11px] font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
           <CalendarDays className="size-3" />
-          View students & attendance
+          {t("View students & attendance")}
           <ChevronRight className="size-3" />
         </div>
       </div>
@@ -226,6 +228,7 @@ export function CourseSessionsTabClient({
   instructors: InstructorPickerItem[];
   students: StudentPickerItem[];
 }) {
+  const t = useT();
   const [newOpen, setNewOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<CourseSessionRow | null>(null);
   const [registerFor, setRegisterFor] = React.useState<CourseSessionRow | null>(null);
@@ -236,11 +239,11 @@ export function CourseSessionsTabClient({
       <>
         <EmptyState
           icon={CalendarDays}
-          title="No course runs yet"
-          description="A course run is a scheduled cohort with real dates, location, and capacity. Students register for a specific run."
+          title={t("No course runs yet")}
+          description={t("A course run is a scheduled cohort with real dates, location, and capacity. Students register for a specific run.")}
           action={
             <Button onClick={() => setNewOpen(true)}>
-              <Plus /> Add first course run
+              <Plus /> {t("Add first course run")}
             </Button>
           }
         />
@@ -273,10 +276,10 @@ export function CourseSessionsTabClient({
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           <span className="font-semibold text-foreground">{sessions.length}</span>{" "}
-          {sessions.length === 1 ? "run" : "runs"} · click a card to open its student roster
+          {sessions.length === 1 ? t("run") : t("runs")} · {t("click a card to open its student roster")}
         </p>
         <Button size="sm" onClick={() => setNewOpen(true)}>
-          <Plus /> Add course run
+          <Plus /> {t("Add course run")}
         </Button>
       </div>
 
@@ -301,7 +304,7 @@ export function CourseSessionsTabClient({
       {past.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Past groups
+            {t("Past groups")}
           </h3>
           <ul className="grid gap-3 sm:grid-cols-2">
             {past.map((s) => (

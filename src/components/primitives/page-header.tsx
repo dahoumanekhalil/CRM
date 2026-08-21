@@ -1,5 +1,8 @@
+"use client";
+
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/use-t";
 
 interface PageHeaderProps {
   title: string;
@@ -16,6 +19,7 @@ export function PageHeader({
   eyebrow,
   className,
 }: PageHeaderProps) {
+  const t = useT();
   return (
     <header
       className={cn(
@@ -26,15 +30,15 @@ export function PageHeader({
       <div className="min-w-0 space-y-1.5">
         {eyebrow ? (
           <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-            {eyebrow}
+            {t(eyebrow)}
           </p>
         ) : null}
         <h1 className="truncate text-2xl font-semibold tracking-tight md:text-3xl">
-          {title}
+          {t(title)}
         </h1>
         {description ? (
           <p className="max-w-2xl text-sm text-muted-foreground md:text-base">
-            {description}
+            {t(description)}
           </p>
         ) : null}
       </div>

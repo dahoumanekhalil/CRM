@@ -10,23 +10,37 @@ import type { NotificationIntent, NotificationType } from "@/lib/notifications/t
 import { hasPermission, type Permission } from "@/lib/permissions";
 import { getOrgTimezone } from "@/lib/org";
 
-// ── TASK 16.2 — Permission-aware delivery ─────────────────────────────────────
+// ── Permission map ─────────────────────────────────────────────────────────────
 // Maps each notification type to the permission the recipient must still hold
-// at delivery time. If their role changed after scheduling, skip silently.
-// Types with no entry (task.*, daily.digest) are granted to ALL_ROLES — no check needed.
+// at delivery time. Types with no entry are granted to ALL roles — no check needed.
 
 const NOTIF_PERMISSION_MAP: Partial<Record<string, Permission>> = {
-  "session.reminder":       "sessions.view",
-  "session.today":          "sessions.view",
-  "session.nearCapacity":   "sessions.view",
-  "payment.pending":        "payments.view",
-  "payment.recorded":       "payments.view",
-  "lead.assigned":          "leads.view",
-  "lead.followup":          "leads.view",
-  "lead.unassignedAlert":   "sales.view",
-  "team.overdueAlert":      "sales.view",
-  "balance.outstanding":    "finance.view",
-  "course.update":          "courses.view",
+  "courseRun.reminder":        "sessions.view",
+  "courseRun.today":           "sessions.view",
+  "courseRun.nearCapacity":    "sessions.view",
+  "courseRun.capacityReached": "sessions.view",
+  "courseRun.rescheduled":     "sessions.view",
+  "courseRun.locationChanged": "sessions.view",
+  "courseRun.cancelled":       "sessions.view",
+  "session.reminder":          "sessions.view",
+  "session.today":             "sessions.view",
+  "session.nearCapacity":      "sessions.view",
+  "payment.pending":           "payments.view",
+  "payment.recorded":          "payments.view",
+  "payment.confirmed":         "payments.view",
+  "payment.rejected":          "payments.view",
+  "payment.balanceCleared":    "payments.view",
+  "balance.outstanding":       "finance.view",
+  "expense.thresholdExceeded": "finance.view",
+  "lead.assigned":             "leads.view",
+  "lead.reassigned":           "leads.view",
+  "lead.unassignedAlert":      "sales.view",
+  "team.overdueAlert":         "sales.view",
+  "registration.confirmed":    "students.view",
+  "registration.cancelled":    "students.view",
+  "registration.runChanged":   "students.view",
+  "attendance.noShow":         "students.view",
+  "course.update":             "courses.view",
 };
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -37,8 +51,7 @@ function authorized(req: NextRequest): boolean {
   return req.headers.get("authorization") === `Bearer ${secret}`;
 }
 
-// ── Enqueue helper ────────────────────────────────────────────────────────────
-// Writes one ScheduledNotification record (skips if already queued/sent).
+// ── Enqueue helper ─────────────────────────────────────────────────────────────
 
 async function enqueue(
   type: string,
@@ -54,7 +67,6 @@ async function enqueue(
 ): Promise<boolean> {
   const { entityId, entityType, provider = "all", scheduledAt, dedupWindowHours = 23 } = opts;
 
-  // Skip if we already have a PENDING/PROCESSING/SENT record within the dedup window.
   if (entityId) {
     const since = subHours(new Date(), dedupWindowHours);
     const dup = await prisma.scheduledNotification.findFirst({
@@ -70,7 +82,6 @@ async function enqueue(
     if (dup) return false;
   }
 
-  // Burst protection: skip if this recipient already has 20+ notifications enqueued in the last 5 min.
   const burstCount = await prisma.scheduledNotification.count({
     where: { recipientId, createdAt: { gte: subMinutes(new Date(), 5) } },
   });
@@ -93,8 +104,7 @@ async function enqueue(
   return true;
 }
 
-// ── C5 Discovery: produce ScheduledNotification rows ─────────────────────────
-// These replace the direct-fire calls in the old C5 implementation.
+// ── Discoverers ───────────────────────────────────────────────────────────────
 
 async function discoverTaskReminders(): Promise<number> {
   const now = new Date();
@@ -155,7 +165,7 @@ async function discoverOverdueTasks(): Promise<number> {
   return enqueued;
 }
 
-async function discoverSessionReminders(): Promise<number> {
+async function discoverCourseRunReminders(): Promise<number> {
   const now = new Date();
   const sessions = await prisma.courseSession.findMany({
     where: {
@@ -180,10 +190,10 @@ async function discoverSessionReminders(): Promise<number> {
 
     const dateRange = `${format(s.startDate, "MMM d")} – ${format(s.endDate, "MMM d, yyyy")}`;
     const ok = await enqueue(
-      NotificationTypes.SESSION_REMINDER,
+      NotificationTypes.COURSE_RUN_REMINDER,
       recipientId,
       {
-        title: "Session starts in 1 hour",
+        title: "Course Run starts in 1 hour",
         body: s.course.name,
         courseName: s.course.name,
         courseSlug: s.course.slug,
@@ -198,6 +208,68 @@ async function discoverSessionReminders(): Promise<number> {
   return enqueued;
 }
 
+async function discoverCourseRunToday(): Promise<number> {
+  const timezone = await getOrgTimezone();
+  const nowInTz = new TZDate(new Date(), timezone);
+  const today = format(nowInTz, "yyyy-MM-dd");
+  const syntheticId = `courseRun.today:${today}`;
+
+  const dayStart = new TZDate(nowInTz.getFullYear(), nowInTz.getMonth(), nowInTz.getDate(), 0, 0, 0, 0, timezone);
+  const dayEnd   = new TZDate(nowInTz.getFullYear(), nowInTz.getMonth(), nowInTz.getDate(), 23, 59, 59, 999, timezone);
+
+  const sessions = await prisma.courseSession.findMany({
+    where: {
+      startDate: { gte: dayStart, lte: dayEnd },
+      status: { in: ["UPCOMING", "OPEN", "FULL", "IN_PROGRESS"] },
+      instructor: { userId: { not: null } },
+    },
+    select: {
+      id: true,
+      startDate: true,
+      location: true,
+      course: { select: { name: true, slug: true } },
+      instructor: { select: { userId: true } },
+      _count: {
+        select: {
+          registrations: {
+            where: { status: { in: ["CONFIRMED", "ATTENDING"] } },
+          },
+        },
+      },
+    },
+  });
+
+  const byInstructor = new Map<string, typeof sessions>();
+  for (const s of sessions) {
+    const uid = s.instructor?.userId;
+    if (!uid) continue;
+    if (!byInstructor.has(uid)) byInstructor.set(uid, []);
+    byInstructor.get(uid)!.push(s);
+  }
+
+  let enqueued = 0;
+  for (const [recipientId, trainerSessions] of byInstructor) {
+    const count = trainerSessions.length;
+    const ok = await enqueue(
+      NotificationTypes.COURSE_RUN_TODAY,
+      recipientId,
+      {
+        title: `You have ${count} Course Run${count !== 1 ? "s" : ""} today`,
+        body: trainerSessions[0]?.course.name ?? "",
+        count,
+        sessions: trainerSessions.map((s) => ({
+          courseName: s.course.name,
+          location: s.location ?? "",
+          registered: s._count.registrations,
+        })),
+      },
+      { entityType: "System", entityId: syntheticId },
+    );
+    if (ok) enqueued++;
+  }
+  return enqueued;
+}
+
 async function discoverPaymentAlerts(): Promise<number> {
   const cutoff = subHours(new Date(), 24);
   const payments = await prisma.payment.findMany({
@@ -206,6 +278,7 @@ async function discoverPaymentAlerts(): Promise<number> {
       id: true,
       amount: true,
       currency: true,
+      method: true,
       student: {
         select: {
           firstName: true,
@@ -222,11 +295,12 @@ async function discoverPaymentAlerts(): Promise<number> {
   for (const p of payments) {
     const studentName = [p.student.firstName, p.student.lastName].filter(Boolean).join(" ");
     const payload = {
-      title: "Payment pending",
-      body: `${studentName} — ${p.amount} ${p.currency}`,
+      title: "Payment awaiting confirmation",
+      body: `${studentName} — ${Number(p.amount).toLocaleString()} ${p.currency}`,
       studentName,
-      amount: String(p.amount),
+      amount: Number(p.amount).toLocaleString(),
       currency: p.currency,
+      method: p.method,
     };
     const opts = { entityType: "Payment", entityId: p.id };
     const ownerId = p.student.leads[0]?.ownerId ?? null;
@@ -253,143 +327,112 @@ async function discoverDailyDigest(): Promise<number> {
   const nowInTz = new TZDate(new Date(), timezone);
   const today = format(nowInTz, "yyyy-MM-dd");
   const syntheticId = `digest:${today}`;
-  // Compute day boundaries in the org timezone by constructing TZDate objects.
-  const dayStart = new TZDate(
-    nowInTz.getFullYear(),
-    nowInTz.getMonth(),
-    nowInTz.getDate(),
-    0, 0, 0, 0,
-    timezone,
-  );
-  const dayEnd = new TZDate(
-    nowInTz.getFullYear(),
-    nowInTz.getMonth(),
-    nowInTz.getDate(),
-    23, 59, 59, 999,
-    timezone,
-  );
+  const dayStart = new TZDate(nowInTz.getFullYear(), nowInTz.getMonth(), nowInTz.getDate(), 0, 0, 0, 0, timezone);
+  const dayEnd   = new TZDate(nowInTz.getFullYear(), nowInTz.getMonth(), nowInTz.getDate(), 23, 59, 59, 999, timezone);
 
-  const [newLeads, registrations, revenueAgg, pendingPayments, upcomingSessions, overdueTasks] =
+  const [newLeads, unassignedLeads, registrations, revenueAgg, pendingPayments, pendingAgg, upcomingSessions, overdueTasks, expenses] =
     await Promise.all([
       prisma.lead.count({ where: { createdAt: { gte: dayStart, lte: dayEnd } } }),
-      prisma.registration.count({ where: { registeredAt: { gte: dayStart, lte: dayEnd } } }),
+      prisma.lead.count({ where: { ownerId: null, status: { notIn: ["LOST", "REGISTERED"] } } }),
+      prisma.registration.count({
+        where: { registeredAt: { gte: dayStart, lte: dayEnd }, status: "CONFIRMED" },
+      }),
       prisma.payment.aggregate({
         _sum: { amount: true },
         where: { status: "COMPLETED", paidAt: { gte: dayStart, lte: dayEnd } },
       }),
       prisma.payment.count({ where: { status: "PENDING" } }),
+      prisma.payment.groupBy({
+        by: ["currency"],
+        where: { status: "PENDING" },
+        _sum: { amount: true },
+      }),
       prisma.courseSession.count({
         where: { startDate: { gte: new Date() }, status: { in: ["UPCOMING", "OPEN"] } },
       }),
       prisma.task.count({
         where: { dueDate: { lt: new Date() }, status: { notIn: ["COMPLETED", "CANCELLED"] } },
       }),
+      prisma.expense.aggregate({
+        _sum: { amount: true },
+        where: { expenseDate: { gte: dayStart, lte: dayEnd } },
+      }),
     ]);
 
   const amountSum = revenueAgg._sum?.amount;
+  const outstandingTotal = pendingAgg.reduce((sum, r) => sum + Number(r._sum?.amount ?? 0), 0);
+  const outstandingCurrency = pendingAgg[0]?.currency ?? "DZD";
+  const expenseTotal = expenses._sum?.amount;
   const dateLabel = format(nowInTz, "MMM d");
-  const payload = {
+
+  // Admin/Manager digest
+  const adminPayload = {
     title: `Daily digest — ${dateLabel}`,
     body: "",
     date: dateLabel,
+    recipientRole: "ADMIN",
     stats: {
       newLeads,
+      unassignedLeads,
       registrations,
-      revenue: amountSum ? `${amountSum.toFixed(2)} USD` : "0.00 USD",
+      revenue: amountSum ? `${Number(amountSum).toLocaleString()} DZD` : "0 DZD",
+      outstandingAmount: `${outstandingTotal.toLocaleString()} ${outstandingCurrency}`,
       pendingPayments,
       upcomingSessions,
       overdueTasks,
+      paymentsReceived: amountSum ? `${Number(amountSum).toLocaleString()} DZD` : "0 DZD",
+      pendingConfirmation: pendingPayments,
+      totalOutstanding: `${outstandingTotal.toLocaleString()} ${outstandingCurrency}`,
+      expenses: expenseTotal ? `${Number(expenseTotal).toLocaleString()} DZD` : "0 DZD",
     },
   };
 
-  const recipients = await prisma.user.findMany({
+  const admins = await prisma.user.findMany({
     where: { role: { in: ["ADMIN", "MANAGER"] } },
     select: { id: true },
   });
 
   let enqueued = 0;
-  for (const u of recipients) {
+  for (const u of admins) {
     if (
-      await enqueue(NotificationTypes.DAILY_DIGEST, u.id, payload, {
+      await enqueue(NotificationTypes.DAILY_DIGEST, u.id, adminPayload, {
         entityType: "System",
-        entityId: syntheticId,
+        entityId: `${syntheticId}:admin`,
       })
     )
       enqueued++;
   }
-  return enqueued;
-}
 
-// Morning alert for trainers — "You have N sessions today".
-async function discoverSessionToday(): Promise<number> {
-  const timezone = await getOrgTimezone();
-  const nowInTz = new TZDate(new Date(), timezone);
-  const today = format(nowInTz, "yyyy-MM-dd");
-  const syntheticId = `session.today:${today}`;
-
-  const dayStart = new TZDate(nowInTz.getFullYear(), nowInTz.getMonth(), nowInTz.getDate(), 0, 0, 0, 0, timezone);
-  const dayEnd   = new TZDate(nowInTz.getFullYear(), nowInTz.getMonth(), nowInTz.getDate(), 23, 59, 59, 999, timezone);
-
-  const sessions = await prisma.courseSession.findMany({
-    where: {
-      startDate: { gte: dayStart, lte: dayEnd },
-      status: { in: ["UPCOMING", "OPEN", "FULL", "IN_PROGRESS"] },
-      instructor: { userId: { not: null } },
-    },
-    select: {
-      id: true,
-      startDate: true,
-      location: true,
-      course: { select: { name: true, slug: true } },
-      instructor: { select: { userId: true } },
-      _count: { select: { registrations: { where: { status: { in: ["CONFIRMED", "ATTENDING"] } } } } },
-    },
+  // Finance digest
+  const financeUsers = await prisma.user.findMany({
+    where: { role: "FINANCE" },
+    select: { id: true },
   });
-
-  // Group by instructor so each trainer gets one grouped message.
-  const byInstructor = new Map<string, typeof sessions>();
-  for (const s of sessions) {
-    const uid = s.instructor?.userId;
-    if (!uid) continue;
-    if (!byInstructor.has(uid)) byInstructor.set(uid, []);
-    byInstructor.get(uid)!.push(s);
+  for (const u of financeUsers) {
+    if (
+      await enqueue(
+        NotificationTypes.DAILY_DIGEST,
+        u.id,
+        {
+          ...adminPayload,
+          recipientRole: "FINANCE",
+        },
+        { entityType: "System", entityId: `${syntheticId}:finance:${u.id}` },
+      )
+    )
+      enqueued++;
   }
 
-  let enqueued = 0;
-  for (const [recipientId, trainerSessions] of byInstructor) {
-    const count = trainerSessions.length;
-    const first = trainerSessions[0];
-    const ok = await enqueue(
-      "session.today",
-      recipientId,
-      {
-        title: `You have ${count} session${count !== 1 ? "s" : ""} today`,
-        body: first ? first.course.name : "",
-        count,
-        sessions: trainerSessions.map((s) => ({
-          courseName: s.course.name,
-          location: s.location ?? "",
-          registered: s._count.registrations,
-        })),
-      },
-      { entityType: "System", entityId: syntheticId },
-    );
-    if (ok) enqueued++;
-  }
   return enqueued;
 }
 
-// Alert managers when there are unassigned leads waiting for distribution.
 async function discoverUnassignedLeadsAlert(): Promise<number> {
   const timezone = await getOrgTimezone();
   const today = format(new TZDate(new Date(), timezone), "yyyy-MM-dd");
   const syntheticId = `lead.unassigned:${today}`;
 
   const count = await prisma.lead.count({
-    where: {
-      ownerId: null,
-      status: { notIn: ["LOST", "REGISTERED"] },
-    },
+    where: { ownerId: null, status: { notIn: ["LOST", "REGISTERED"] } },
   });
   if (count === 0) return 0;
 
@@ -401,7 +444,7 @@ async function discoverUnassignedLeadsAlert(): Promise<number> {
   let enqueued = 0;
   for (const u of managers) {
     const ok = await enqueue(
-      "lead.unassignedAlert",
+      NotificationTypes.LEAD_UNASSIGNED_ALERT,
       u.id,
       {
         title: "Unassigned leads waiting",
@@ -415,7 +458,6 @@ async function discoverUnassignedLeadsAlert(): Promise<number> {
   return enqueued;
 }
 
-// Alert managers when a Sales Rep has many overdue leads.
 async function discoverTeamOverdueAlert(): Promise<number> {
   const timezone = await getOrgTimezone();
   const today = format(new TZDate(new Date(), timezone), "yyyy-MM-dd");
@@ -448,13 +490,12 @@ async function discoverTeamOverdueAlert(): Promise<number> {
 
   let enqueued = 0;
   for (const u of managers) {
-    const lines = groups.map((g) => `${repNames.get(g.ownerId!) ?? "Rep"}: ${g._count._all} overdue`);
     const ok = await enqueue(
-      "team.overdueAlert",
+      NotificationTypes.TEAM_OVERDUE_ALERT,
       u.id,
       {
         title: "Team overdue leads alert",
-        body: lines.join(", "),
+        body: groups.map((g) => `${repNames.get(g.ownerId!) ?? "Rep"}: ${g._count._all} overdue`).join(", "),
         reps: groups.map((g) => ({ name: repNames.get(g.ownerId!), count: g._count._all })),
       },
       { entityType: "System", entityId: syntheticId },
@@ -464,14 +505,15 @@ async function discoverTeamOverdueAlert(): Promise<number> {
   return enqueued;
 }
 
-// Daily outstanding balance summary for Finance users.
 async function discoverOutstandingBalance(): Promise<number> {
   const timezone = await getOrgTimezone();
   const today = format(new TZDate(new Date(), timezone), "yyyy-MM-dd");
   const syntheticId = `balance.outstanding:${today}`;
 
   const [pendingCount, pendingAgg] = await Promise.all([
-    prisma.payment.count({ where: { status: "PENDING" } }),
+    prisma.registration.count({
+      where: { status: { in: ["PENDING", "CONFIRMED", "ATTENDING"] } },
+    }),
     prisma.payment.groupBy({
       by: ["currency"],
       where: { status: "PENDING" },
@@ -493,11 +535,12 @@ async function discoverOutstandingBalance(): Promise<number> {
   let enqueued = 0;
   for (const u of financeUsers) {
     const ok = await enqueue(
-      "balance.outstanding",
+      NotificationTypes.BALANCE_OUTSTANDING,
       u.id,
       {
         title: "Outstanding balance summary",
-        body: `${pendingCount} pending payment${pendingCount !== 1 ? "s" : ""} awaiting confirmation.`,
+        body: `${pendingCount} registration${pendingCount !== 1 ? "s" : ""} have remaining balances.`,
+        recipientRole: "ADMIN",
         pendingCount,
         byCurrency,
       },
@@ -508,9 +551,7 @@ async function discoverOutstandingBalance(): Promise<number> {
   return enqueued;
 }
 
-// ── Stale processing recovery ─────────────────────────────────────────────────
-// If the cron crashed mid-batch, records may be stuck in PROCESSING.
-// Reset them to PENDING so they are retried next run.
+// ── Stale processing recovery ──────────────────────────────────────────────────
 
 async function recoverStaleProcessing(): Promise<number> {
   const staleAt = subMinutes(new Date(), 5);
@@ -521,32 +562,25 @@ async function recoverStaleProcessing(): Promise<number> {
   return result.count;
 }
 
-// ── Queue processor ───────────────────────────────────────────────────────────
+// ── Queue processor ────────────────────────────────────────────────────────────
 
-// Backoff delays per attempt number (1-indexed): 30s, 5min, 30min.
 const BACKOFF_SECONDS = [30, 300, 1800];
 
 async function processOne(
   n: Awaited<ReturnType<typeof prisma.scheduledNotification.findMany>>[number],
 ): Promise<"sent" | "failed" | "retrying" | "cancelled"> {
-  // Atomically claim this record. updateMany with a status condition ensures
-  // only one concurrent cron instance wins the race — PostgreSQL guarantees
-  // that only one transaction will find status = PENDING and update it.
   const claimed = await prisma.scheduledNotification.updateMany({
     where: { id: n.id, status: "PENDING" },
     data: { status: "PROCESSING", lastAttemptAt: new Date(), attemptCount: { increment: 1 } },
   });
-  if (claimed.count === 0) return "cancelled"; // Already claimed by another instance.
+  if (claimed.count === 0) return "cancelled";
 
   const currentAttempt = n.attemptCount + 1;
 
   try {
-    // Validate recipient still exists and fetch role for permission check (TASK 16.2).
     const user = await prisma.user.findUnique({ where: { id: n.recipientId }, select: { id: true, role: true } });
     if (!user) throw new Error("Recipient no longer exists");
 
-    // TASK 16.2 — If the recipient's role no longer grants the required permission
-    // for this notification type (e.g. demoted after scheduling), cancel silently.
     const requiredPermission = NOTIF_PERMISSION_MAP[n.type];
     if (requiredPermission && !hasPermission(user.role, requiredPermission)) {
       await prisma.scheduledNotification.update({
@@ -567,13 +601,11 @@ async function processOne(
       entityId: n.entityId ?? undefined,
     };
 
-    // Dispatch to the appropriate provider(s).
     if (n.provider === "telegram") {
       await TelegramProvider.send(intent);
     } else if (n.provider === "inapp") {
       await InAppProvider.send(intent);
     } else {
-      // "all" — deliver to both; treat as failure if either throws.
       await Promise.all([InAppProvider.send(intent), TelegramProvider.send(intent)]);
     }
 
@@ -623,7 +655,6 @@ async function processQueue(): Promise<{ sent: number; failed: number; retrying:
       else if (o.value === "cancelled") cancelled++;
       else retrying++;
     } else {
-      // processOne itself threw unexpectedly — not a provider error.
       console.error("[cron] processOne threw:", o.reason);
       failed++;
     }
@@ -639,15 +670,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // 1. Recover records stuck in PROCESSING from a previous crashed run.
     const recovered = await recoverStaleProcessing();
 
-    // 2. Discover and enqueue new notifications.
     const [
       taskReminders,
       overdueTasks,
-      sessionReminders,
-      sessionToday,
+      courseRunReminders,
+      courseRunToday,
       paymentAlerts,
       dailyDigest,
       unassignedLeads,
@@ -656,8 +685,8 @@ export async function POST(req: NextRequest) {
     ] = await Promise.all([
       discoverTaskReminders(),
       discoverOverdueTasks(),
-      discoverSessionReminders(),
-      discoverSessionToday(),
+      discoverCourseRunReminders(),
+      discoverCourseRunToday(),
       discoverPaymentAlerts(),
       discoverDailyDigest(),
       discoverUnassignedLeadsAlert(),
@@ -665,13 +694,22 @@ export async function POST(req: NextRequest) {
       discoverOutstandingBalance(),
     ]);
 
-    // 3. Process the queue (up to 50 due items).
     const queue = await processQueue();
 
     return NextResponse.json({
       ok: true,
       recovered,
-      enqueued: { taskReminders, overdueTasks, sessionReminders, sessionToday, paymentAlerts, dailyDigest, unassignedLeads, teamOverdue, outstandingBalance },
+      enqueued: {
+        taskReminders,
+        overdueTasks,
+        courseRunReminders,
+        courseRunToday,
+        paymentAlerts,
+        dailyDigest,
+        unassignedLeads,
+        teamOverdue,
+        outstandingBalance,
+      },
       queue,
     });
   } catch (err) {

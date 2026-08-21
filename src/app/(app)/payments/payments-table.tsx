@@ -7,6 +7,7 @@ import { format, formatDistanceToNow } from "date-fns";
 import { MoreHorizontal, Pencil, Wallet } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 
+import { useT } from "@/lib/i18n/use-t";
 import { DataTable } from "@/components/tables/data-table";
 import { DataTableColumnHeader } from "@/components/tables/data-table-column-header";
 import { DataTablePagination } from "@/components/tables/data-table-pagination";
@@ -55,6 +56,7 @@ export function PaymentsTable({
   onNewPayment: () => void;
   onEditPayment: (payment: PaymentRow) => void;
 }) {
+  const t = useT();
   const [filters, setFilters] = useQueryStates(paymentFilters);
 
   const toggleSort = (key: "createdAt" | "paidAt" | "amount" | "status") => {
@@ -77,7 +79,7 @@ export function PaymentsTable({
     () => [
       {
         id: "student",
-        header: "Student",
+        header: () => t("Student"),
         cell: ({ row }) => {
           const s = row.original.student;
           const name = [s.firstName, s.lastName].filter(Boolean).join(" ") ||
@@ -103,7 +105,7 @@ export function PaymentsTable({
                 </Link>
               ) : (
                 <div className="text-xs text-muted-foreground/70">
-                  No linked session
+                  {t("No linked session")}
                 </div>
               )}
             </div>
@@ -114,7 +116,7 @@ export function PaymentsTable({
         accessorKey: "amount",
         header: () => (
           <DataTableColumnHeader
-            title="Amount"
+            title={t("Amount")}
             sortDir={sortDirFor("amount")}
             onToggleSort={() => toggleSort("amount")}
             className="text-end w-full"
@@ -128,7 +130,7 @@ export function PaymentsTable({
       },
       {
         id: "method",
-        header: "Method",
+        header: () => t("Method"),
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">
             {humanize(row.original.method)}
@@ -139,7 +141,7 @@ export function PaymentsTable({
         accessorKey: "status",
         header: () => (
           <DataTableColumnHeader
-            title="Status"
+            title={t("Status")}
             sortDir={sortDirFor("status")}
             onToggleSort={() => toggleSort("status")}
           />
@@ -150,7 +152,7 @@ export function PaymentsTable({
         accessorKey: "paidAt",
         header: () => (
           <DataTableColumnHeader
-            title="Paid"
+            title={t("Paid")}
             sortDir={sortDirFor("paidAt")}
             onToggleSort={() => toggleSort("paidAt")}
           />
@@ -165,7 +167,7 @@ export function PaymentsTable({
       },
       {
         id: "reference",
-        header: "Reference",
+        header: () => t("Reference"),
         cell: ({ row }) => (
           <span className="truncate font-mono text-xs text-muted-foreground">
             {row.original.reference ?? "—"}
@@ -176,7 +178,7 @@ export function PaymentsTable({
         accessorKey: "createdAt",
         header: () => (
           <DataTableColumnHeader
-            title="Recorded"
+            title={t("Recorded")}
             sortDir={sortDirFor("createdAt")}
             onToggleSort={() => toggleSort("createdAt")}
           />
@@ -202,14 +204,14 @@ export function PaymentsTable({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuLabel>{t("Actions")}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => onEditPayment(row.original)}>
-                  <Pencil /> Edit
+                  <Pencil /> {t("Edit")}
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link href={`/students/${row.original.student.id}?tab=payments`}>
-                    Open student
+                    {t("Open student")}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -217,7 +219,7 @@ export function PaymentsTable({
                   disabled
                   className="text-destructive focus:text-destructive"
                 >
-                  Delete
+                  {t("Delete")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -235,8 +237,8 @@ export function PaymentsTable({
     filters.studentId !== "" ? (
       <EmptyState
         icon={Wallet}
-        title="No payments match your filters"
-        description="Try clearing filters or picking a different status."
+        title={t("No payments match your filters")}
+        description={t("Try clearing filters or picking a different status.")}
         action={
           <Button
             variant="outline"
@@ -250,7 +252,7 @@ export function PaymentsTable({
               })
             }
           >
-            Clear filters
+            {t("Clear filters")}
           </Button>
         }
         className="border-0 bg-transparent"
@@ -258,9 +260,9 @@ export function PaymentsTable({
     ) : (
       <EmptyState
         icon={Wallet}
-        title="No payments yet"
-        description="Payments appear here once you record cash, card, transfer or online payments from students."
-        action={<Button onClick={onNewPayment}>Record your first payment</Button>}
+        title={t("No payments yet")}
+        description={t("Payments appear here once you record cash, card, transfer or online payments from students.")}
+        action={<Button onClick={onNewPayment}>{t("Record your first payment")}</Button>}
         className="border-0 bg-transparent"
       />
     );

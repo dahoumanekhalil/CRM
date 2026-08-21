@@ -1,5 +1,8 @@
+"use client";
+
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/use-t";
 
 type StatusTone =
   | "neutral"
@@ -94,6 +97,7 @@ const humanize = (s: string) =>
     .join(" ");
 
 export function StatusBadge({ status, tone, className }: StatusBadgeProps) {
+  const t = useT();
   const resolved = tone ?? statusTone[status] ?? "neutral";
   return (
     <span
@@ -109,7 +113,7 @@ export function StatusBadge({ status, tone, className }: StatusBadgeProps) {
           resolved === "neutral" && "opacity-40"
         )}
       />
-      {humanize(status)}
+      {t(humanize(status))}
     </span>
   );
 }

@@ -8,6 +8,7 @@ import { GraduationCap, Mail, MoreHorizontal, Phone } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/use-t";
 import { calcPaymentStatus } from "@/lib/payment-status";
 import { DataTable } from "@/components/tables/data-table";
 import { DataTableColumnHeader } from "@/components/tables/data-table-column-header";
@@ -41,6 +42,7 @@ export function StudentsTable({
   total: number;
   onNewStudent: () => void;
 }) {
+  const t = useT();
   const [filters, setFilters] = useQueryStates(studentFilters);
 
   const toggleSort = (key: "createdAt" | "firstName" | "lastName") => {
@@ -65,7 +67,7 @@ export function StudentsTable({
         accessorKey: "firstName",
         header: () => (
           <DataTableColumnHeader
-            title="Student"
+            title={t("Student")}
             sortDir={sortDirFor("firstName")}
             onToggleSort={() => toggleSort("firstName")}
           />
@@ -125,7 +127,7 @@ export function StudentsTable({
       },
       {
         id: "contact",
-        header: "Contact",
+        header: () => t("Contact"),
         cell: ({ row }) => {
           const s = row.original;
           if (!s.email && !s.phone) {
@@ -151,7 +153,7 @@ export function StudentsTable({
       },
       {
         id: "registrations",
-        header: () => <span className="block w-full text-end">Registrations</span>,
+        header: () => <span className="block w-full text-end">{t("Registrations")}</span>,
         cell: ({ row }) => (
           <div className="text-end text-sm tabular-nums">
             {row.original._count.registrations}
@@ -160,7 +162,7 @@ export function StudentsTable({
       },
       {
         id: "payments",
-        header: () => <span className="block w-full text-end">Payments</span>,
+        header: () => <span className="block w-full text-end">{t("Payments")}</span>,
         cell: ({ row }) => (
           <div className="text-end text-sm tabular-nums text-muted-foreground">
             {row.original._count.payments}
@@ -171,7 +173,7 @@ export function StudentsTable({
         accessorKey: "createdAt",
         header: () => (
           <DataTableColumnHeader
-            title="Joined"
+            title={t("Joined")}
             sortDir={sortDirFor("createdAt")}
             onToggleSort={() => toggleSort("createdAt")}
           />
@@ -197,18 +199,18 @@ export function StudentsTable({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuLabel>{t("Actions")}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href={`/students/${row.original.id}`}>Open</Link>
+                  <Link href={`/students/${row.original.id}`}>{t("Open")}</Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem disabled>Register for course</DropdownMenuItem>
+                <DropdownMenuItem disabled>{t("Register for course")}</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   disabled
                   className="text-destructive focus:text-destructive"
                 >
-                  Delete
+                  {t("Delete")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -223,14 +225,14 @@ export function StudentsTable({
     filters.q || filters.tag ? (
       <EmptyState
         icon={GraduationCap}
-        title="No students match your filters"
-        description="Try searching for something else, or clear filters."
+        title={t("No students match your filters")}
+        description={t("Try searching for something else, or clear filters.")}
         action={
           <Button
             variant="outline"
             onClick={() => setFilters({ q: "", tag: "", page: 1 })}
           >
-            Clear filters
+            {t("Clear filters")}
           </Button>
         }
         className="border-0 bg-transparent"
@@ -238,9 +240,9 @@ export function StudentsTable({
     ) : (
       <EmptyState
         icon={GraduationCap}
-        title="No students yet"
-        description="Students appear here once you add them or convert a lead."
-        action={<Button onClick={onNewStudent}>Add your first student</Button>}
+        title={t("No students yet")}
+        description={t("Students appear here once you add them or convert a lead.")}
+        action={<Button onClick={onNewStudent}>{t("Add your first student")}</Button>}
         className="border-0 bg-transparent"
       />
     );

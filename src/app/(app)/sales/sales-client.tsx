@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/select";
 import { StatusBadge } from "@/components/primitives/status-badge";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/use-t";
 import { bulkAssignLeads } from "@/app/(app)/leads/actions";
 import type { SalesTeamMember } from "@/app/(app)/leads/actions";
 import type { UnassignedLeadManagerRow, SalesTeamDetailRow, SalesFunnel, SessionSalesRow, SalesWorkspaceKpis } from "./actions";
@@ -51,9 +52,10 @@ function KpiCard({
   value: number;
   tone?: "danger" | "warning" | "success" | "neutral";
 }) {
+  const t = useT();
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4">
-      <p className="text-xs text-muted-foreground mb-1">{label}</p>
+      <p className="text-xs text-muted-foreground mb-1">{t(label)}</p>
       <p
         className={cn(
           "text-2xl font-bold tabular-nums",
@@ -84,6 +86,7 @@ function BulkAssignDialog({
   onAssigned: () => void;
 }) {
   const router = useRouter();
+  const t = useT();
   const [assigneeId, setAssigneeId] = React.useState<string>("");
   const [pending, startTransition] = React.useTransition();
 
@@ -122,9 +125,9 @@ function BulkAssignDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Assign {selectedLeads.length} Lead{selectedLeads.length !== 1 ? "s" : ""}</DialogTitle>
+          <DialogTitle>{t("Assign")} {selectedLeads.length} {selectedLeads.length !== 1 ? t("Leads") : t("Lead")}</DialogTitle>
           <DialogDescription>
-            Select a sales representative to receive these leads.
+            {t("Select a sales representative to receive these leads.")}
           </DialogDescription>
         </DialogHeader>
 
@@ -143,10 +146,10 @@ function BulkAssignDialog({
 
           {/* Assignee picker */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Assign to</label>
+            <label className="text-sm font-medium">{t("Assign to")}</label>
             <Select value={assigneeId} onValueChange={setAssigneeId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select sales representative…" />
+                <SelectValue placeholder={t("Select sales representative…")} />
               </SelectTrigger>
               <SelectContent>
                 {salesTeam.map((u) => (
@@ -164,11 +167,11 @@ function BulkAssignDialog({
 
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={pending}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button onClick={handleAssign} disabled={!assigneeId || pending}>
             {pending ? <Loader2 className="size-4 animate-spin" /> : null}
-            Assign {selectedLeads.length} Lead{selectedLeads.length !== 1 ? "s" : ""}
+            {t("Assign")} {selectedLeads.length} {selectedLeads.length !== 1 ? t("Leads") : t("Lead")}
           </Button>
         </div>
       </DialogContent>
@@ -229,6 +232,7 @@ function UnassignedLeadsInbox({
   initialTotal: number;
   salesTeam: SalesTeamMember[];
 }) {
+  const t = useT();
   const [q, setQ] = React.useState("");
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [assignOpen, setAssignOpen] = React.useState(false);
@@ -270,7 +274,7 @@ function UnassignedLeadsInbox({
       <header className="border-b border-border/60 px-4 py-3 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold tracking-tight flex items-center gap-2">
           <AlertCircle className="size-4 text-warning" />
-          Unassigned Leads
+          {t("Unassigned Leads")}
           {initialTotal > 0 ? (
             <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-semibold text-warning">
               {initialTotal}
@@ -279,7 +283,7 @@ function UnassignedLeadsInbox({
         </h2>
         {selected.size > 0 ? (
           <Button size="sm" onClick={() => setAssignOpen(true)}>
-            Assign {selected.size} Lead{selected.size !== 1 ? "s" : ""}
+            {t("Assign")} {selected.size} {selected.size !== 1 ? t("Leads") : t("Lead")}
           </Button>
         ) : null}
       </header>
@@ -294,15 +298,15 @@ function UnassignedLeadsInbox({
             className="size-4 rounded border-border accent-primary"
           />
           {selected.size > 0
-            ? `${selected.size} selected`
-            : "Select all"}
+            ? `${selected.size} ${t("selected")}`
+            : t("Select all")}
         </label>
         <div className="relative flex-1 max-w-xs ms-2">
           <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search leads…"
+            placeholder={t("Search leads…")}
             className="h-7 ps-8 text-xs"
           />
           {q ? (
@@ -320,7 +324,7 @@ function UnassignedLeadsInbox({
         <div className="flex flex-col items-center gap-2 py-12 text-center">
           <CheckCircle2 className="size-8 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">
-            {q ? "No leads match your search." : "All incoming leads have been assigned."}
+            {q ? t("No leads match your search.") : t("All incoming leads have been assigned.")}
           </p>
         </div>
       ) : (
@@ -350,6 +354,7 @@ function UnassignedLeadsInbox({
 // ── Team workload grid ────────────────────────────────────────────────────────
 
 function TeamWorkloadCard({ rep }: { rep: SalesTeamDetailRow }) {
+  const t = useT();
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4 space-y-3">
       <div className="flex items-center gap-2">
@@ -364,32 +369,32 @@ function TeamWorkloadCard({ rep }: { rep: SalesTeamDetailRow }) {
 
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="rounded-md bg-muted/40 p-2">
-          <div className="text-muted-foreground">Assigned</div>
+          <div className="text-muted-foreground">{t("Assigned")}</div>
           <div className="font-semibold tabular-nums text-base">{rep.assigned}</div>
         </div>
         <div className={cn("rounded-md p-2", rep.overdue > 0 ? "bg-destructive/10" : "bg-muted/40")}>
-          <div className={cn("text-muted-foreground", rep.overdue > 0 && "text-destructive/70")}>Overdue</div>
+          <div className={cn("text-muted-foreground", rep.overdue > 0 && "text-destructive/70")}>{t("Overdue")}</div>
           <div className={cn("font-semibold tabular-nums text-base", rep.overdue > 0 && "text-destructive")}>
             {rep.overdue}
           </div>
         </div>
         <div className="rounded-md bg-muted/40 p-2">
-          <div className="text-muted-foreground">Interested</div>
+          <div className="text-muted-foreground">{t("Interested")}</div>
           <div className="font-semibold tabular-nums text-base">{rep.interested}</div>
         </div>
         <div className="rounded-md bg-muted/40 p-2">
-          <div className="text-muted-foreground">Confirmed</div>
+          <div className="text-muted-foreground">{t("Confirmed")}</div>
           <div className="font-semibold tabular-nums text-base">{rep.confirmed}</div>
         </div>
         <div className="col-span-2 rounded-md bg-success/5 border border-success/20 p-2">
-          <div className="text-muted-foreground">Registered</div>
+          <div className="text-muted-foreground">{t("Registered")}</div>
           <div className="font-semibold tabular-nums text-base text-success">{rep.registered}</div>
         </div>
       </div>
 
       {rep.dueToday > 0 ? (
         <p className="text-xs text-warning font-medium flex items-center gap-1">
-          <Clock className="size-3" /> {rep.dueToday} follow-up{rep.dueToday !== 1 ? "s" : ""} due today
+          <Clock className="size-3" /> {rep.dueToday} {rep.dueToday !== 1 ? t("follow-ups due today") : t("follow-up due today")}
         </p>
       ) : null}
     </div>
@@ -483,6 +488,7 @@ export function SalesManagerClient({
   sessionStats: SessionSalesRow[];
   salesTeam: SalesTeamMember[];
 }) {
+  const t = useT();
   const maxFunnelCount = funnel.stages[0]?.count ?? 1;
 
   return (
@@ -490,7 +496,7 @@ export function SalesManagerClient({
       {/* KPI strip */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <KpiCard label="Total Leads" value={kpis.totalLeads} />
-        <KpiCard label="Unassigned" value={kpis.unassigned} tone={kpis.unassigned > 0 ? "warning" : "neutral"} />
+        <KpiCard label="Unassigned Leads" value={kpis.unassigned} tone={kpis.unassigned > 0 ? "warning" : "neutral"} />
         <KpiCard label="Assigned" value={kpis.assigned} />
         <KpiCard label="Follow-ups Today" value={kpis.followUpsToday} />
         <KpiCard label="Overdue" value={kpis.overdueFollowUps} tone={kpis.overdueFollowUps > 0 ? "danger" : "neutral"} />
@@ -510,11 +516,11 @@ export function SalesManagerClient({
         <section className="space-y-3">
           <h2 className="text-sm font-semibold tracking-tight flex items-center gap-1.5">
             <Users2 className="size-4 text-muted-foreground" />
-            Sales Team
+            {t("Sales Team")}
           </h2>
           <div className="space-y-3">
             {teamRows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No sales team members found.</p>
+              <p className="text-sm text-muted-foreground">{t("No sales team members found.")}</p>
             ) : (
               teamRows.map((rep) => <TeamWorkloadCard key={rep.id} rep={rep} />)
             )}
@@ -526,7 +532,7 @@ export function SalesManagerClient({
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Sales funnel */}
         <section className="rounded-xl border border-border/60 bg-card p-5">
-          <h2 className="text-sm font-semibold tracking-tight mb-4">Sales Pipeline</h2>
+          <h2 className="text-sm font-semibold tracking-tight mb-4">{t("Sales Pipeline")}</h2>
           <div className="space-y-3">
             {funnel.stages.map((stage) => (
               <FunnelBar
@@ -539,7 +545,7 @@ export function SalesManagerClient({
           </div>
           {funnel.total > 0 ? (
             <div className="mt-4 pt-4 border-t border-border/40 flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Conversion rate</span>
+              <span className="text-muted-foreground">{t("Conversion rate")}</span>
               <span className="font-semibold text-success">{funnel.conversionRate}%</span>
             </div>
           ) : null}
@@ -547,17 +553,17 @@ export function SalesManagerClient({
             <div className="mt-2 pt-2 border-t border-border/40 space-y-1">
               {funnel.dropped.lost > 0 ? (
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Lost</span><span className="tabular-nums">{funnel.dropped.lost}</span>
+                  <span>{t("Lost")}</span><span className="tabular-nums">{funnel.dropped.lost}</span>
                 </div>
               ) : null}
               {funnel.dropped.notInterested > 0 ? (
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Not interested</span><span className="tabular-nums">{funnel.dropped.notInterested}</span>
+                  <span>{t("Not Interested")}</span><span className="tabular-nums">{funnel.dropped.notInterested}</span>
                 </div>
               ) : null}
               {funnel.dropped.unreachable > 0 ? (
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Unreachable</span><span className="tabular-nums">{funnel.dropped.unreachable}</span>
+                  <span>{t("Unreachable")}</span><span className="tabular-nums">{funnel.dropped.unreachable}</span>
                 </div>
               ) : null}
             </div>
@@ -567,22 +573,22 @@ export function SalesManagerClient({
         {/* Upcoming course run capacity */}
         <section className="rounded-xl border border-border/60 bg-card overflow-hidden">
           <header className="border-b border-border/60 px-4 py-3">
-            <h2 className="text-sm font-semibold tracking-tight">Upcoming Course Run Capacity</h2>
+            <h2 className="text-sm font-semibold tracking-tight">{t("Upcoming Course Run Capacity")}</h2>
           </header>
           {sessionStats.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No upcoming course runs.
+              {t("No upcoming course runs.")}
             </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border/40 text-xs text-muted-foreground">
-                    <th className="px-4 py-2 text-start font-medium">Course Run</th>
-                    <th className="px-4 py-2 text-center font-medium">Leads</th>
-                    <th className="px-4 py-2 text-center font-medium">Confirmed</th>
-                    <th className="px-4 py-2 text-start font-medium">Capacity</th>
-                    <th className="px-4 py-2 text-start font-medium">Status</th>
+                    <th className="px-4 py-2 text-start font-medium">{t("Course Run")}</th>
+                    <th className="px-4 py-2 text-center font-medium">{t("Leads")}</th>
+                    <th className="px-4 py-2 text-center font-medium">{t("Confirmed")}</th>
+                    <th className="px-4 py-2 text-start font-medium">{t("Capacity")}</th>
+                    <th className="px-4 py-2 text-start font-medium">{t("Status")}</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ChangePasswordDialog } from "./change-password-dialog";
+import { useT } from "@/lib/i18n/use-t";
 
 function initials(name?: string | null, email?: string | null) {
   const base = name || email || "?";
@@ -44,6 +45,7 @@ export function UserMenu({ session }: { session: Session | null }) {
   const { isMobile } = useSidebar();
   const user = session?.user;
   const [changePwOpen, setChangePwOpen] = React.useState(false);
+  const t = useT();
 
   return (
     <>
@@ -63,7 +65,7 @@ export function UserMenu({ session }: { session: Session | null }) {
                 </Avatar>
                 <div className="grid flex-1 text-start text-sm leading-tight">
                   <span className="truncate font-medium">
-                    {user?.name ?? "Signed in"}
+                    {user?.name ?? t("Signed in")}
                   </span>
                   <span className="truncate text-xs text-muted-foreground">
                     {user?.email ?? "—"}
@@ -81,7 +83,7 @@ export function UserMenu({ session }: { session: Session | null }) {
               <DropdownMenuLabel>
                 <div className="flex flex-col">
                   <span className="truncate font-medium">
-                    {user?.name ?? "Signed in"}
+                    {user?.name ?? t("Signed in")}
                   </span>
                   <span className="truncate text-xs font-normal text-muted-foreground">
                     {user?.email ?? "—"}
@@ -91,20 +93,20 @@ export function UserMenu({ session }: { session: Session | null }) {
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link href="/account">
-                  <UserCircle /> Account
+                  <UserCircle /> {t("Account")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setChangePwOpen(true)}>
-                <KeyRound /> Change password
+                <KeyRound /> {t("Change password")}
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/settings/notifications">
-                  <Bell /> Notifications
+                  <Bell /> {t("Notifications")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/settings">
-                  <Settings /> Settings
+                  <Settings /> {t("Settings")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -112,7 +114,7 @@ export function UserMenu({ session }: { session: Session | null }) {
                 onClick={() => signOut({ callbackUrl: "/sign-in" })}
                 className="text-destructive focus:text-destructive"
               >
-                <LogOut /> Sign out
+                <LogOut /> {t("Sign out")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

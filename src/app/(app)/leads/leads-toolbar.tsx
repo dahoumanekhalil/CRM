@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useQueryStates } from "nuqs";
-import { Plus, X } from "lucide-react";
+import { Plus, Upload, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/primitives/search-input";
@@ -14,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/use-t";
 
 import { leadFilters } from "./leads-filters";
 import { VISIBLE_LEAD_STATUSES, LEAD_FOLLOW_UP_FILTERS } from "@/lib/schemas/lead";
@@ -45,6 +47,7 @@ export function LeadsToolbar({
   courses: LeadCoursePickerItem[];
   hideOwnershipFilter?: boolean;
 }) {
+  const t = useT();
   const [filters, setFilters] = useQueryStates(leadFilters);
 
   const hasActiveFilters =
@@ -63,7 +66,7 @@ export function LeadsToolbar({
             containerClassName="flex-1"
             value={filters.q}
             onChange={(v) => setFilters({ q: v, page: 1 })}
-            placeholder="Search leads by name, email, phone…"
+            placeholder={t("Search leads by name, email, phone…")}
           />
           <Select
             value={filters.courseId || "__all"}
@@ -75,7 +78,7 @@ export function LeadsToolbar({
               <SelectValue placeholder="Course" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__all">All courses</SelectItem>
+              <SelectItem value="__all">{t("All courses")}</SelectItem>
               {courses.map((c) => (
                 <SelectItem key={c.id} value={c.id}>
                   {c.name}
@@ -94,7 +97,7 @@ export function LeadsToolbar({
               }
               className="text-muted-foreground hover:text-foreground"
             >
-              <X className="size-3.5" /> Clear
+              <X className="size-3.5" /> {t("Clear")}
             </Button>
           ) : null}
           <CsvExportButton
@@ -107,8 +110,13 @@ export function LeadsToolbar({
               })
             }
           />
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/leads/import">
+              <Upload className="size-3.5" /> {t("Import")}
+            </Link>
+          </Button>
           <Button onClick={onNewLead} size="sm">
-            <Plus /> New lead
+            <Plus /> {t("New lead")}
           </Button>
         </div>
       </div>
@@ -131,7 +139,7 @@ export function LeadsToolbar({
                   : "border-border/70 text-muted-foreground hover:border-border hover:text-foreground"
               )}
             >
-              {tab.label}
+              {t(tab.label)}
               {tab.value === "ALL" ? (
                 <span className={cn("ms-1.5 opacity-70 tabular-nums")}>{total}</span>
               ) : null}
@@ -144,7 +152,7 @@ export function LeadsToolbar({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
         {!hideOwnershipFilter && (
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground me-0.5">Owner:</span>
+            <span className="text-xs text-muted-foreground me-0.5">{t("Owner:")}</span>
             {(
               [
                 { value: "all", label: "All" },
@@ -165,7 +173,7 @@ export function LeadsToolbar({
                       : "border-border/60 text-muted-foreground hover:border-border hover:text-foreground"
                   )}
                 >
-                  {f.label}
+                  {t(f.label)}
                 </button>
               );
             })}
@@ -183,13 +191,13 @@ export function LeadsToolbar({
           )}
         >
           <Star className={cn("size-3", filters.highPriority && "fill-amber-500 text-amber-500")} />
-          High priority
+          {t("High priority")}
         </button>
       </div>
 
       {/* Follow-up filter chips */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-xs text-muted-foreground me-0.5">Follow-up:</span>
+        <span className="text-xs text-muted-foreground me-0.5">{t("Follow-up:")}</span>
         {(
           [
             { value: "ALL", label: "All" },
@@ -215,7 +223,7 @@ export function LeadsToolbar({
                   : "border-border/60 text-muted-foreground hover:border-border hover:text-foreground"
               )}
             >
-              {f.label}
+              {t(f.label)}
             </button>
           );
         })}

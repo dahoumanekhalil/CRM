@@ -3,14 +3,39 @@ import { prisma } from "@/lib/prisma";
 import { sendMessage } from "@/lib/telegram/client";
 import {
   escHtml,
+  msgTaskAssigned,
   msgC5aTaskReminder,
   msgC5bOverdueTasks,
-  msgC5cSessionReminder,
+  msgCourseRunReminder,
+  msgCourseRunToday,
+  msgCourseRunNearCapacity,
+  msgCourseRunCapacityReached,
+  msgCourseRunRescheduled,
+  msgCourseRunLocationChanged,
+  msgCourseRunCancelled,
   msgC5dPaymentPending,
+  msgPaymentRecorded,
+  msgPaymentConfirmed,
+  msgPaymentRejected,
+  msgPaymentBalanceCleared,
   msgC5eLeadAssigned,
   msgC5eLeadAssignedBulk,
+  msgLeadReassigned,
+  msgLeadUnassignedAlert,
+  msgTeamOverdueAlert,
+  msgRegistrationConfirmed,
+  msgRegistrationCancelled,
+  msgRegistrationRunChanged,
+  msgBalanceOutstandingManager,
+  msgBalanceOutstandingSales,
+  msgExpenseThresholdExceeded,
+  msgAttendanceNoShow,
   msgC5fDailyDigest,
+  msgDailyDigestSales,
+  msgDailyDigestTrainer,
+  msgDailyDigestFinance,
   type DailyDigestStats,
+  type Lang,
 } from "@/lib/telegram/message-templates";
 import { isPreferenceEnabled } from "../preferences";
 import type { NotificationProvider, NotificationIntent } from "../types";
@@ -27,65 +52,323 @@ function str(v: unknown): string {
 function num(v: unknown): number {
   return typeof v === "number" ? v : 0;
 }
+function arr<T>(v: unknown): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
 
-function formatMessage(intent: NotificationIntent): string | null {
+function formatMessage(intent: NotificationIntent, lang: Lang): string | null {
   const { type, payload } = intent;
 
   switch (type) {
-    case "task.reminder":
+    // ── Tasks ───────────────────────────────────────────────────────────────
+    case "task.assigned": {
       if (!payload.taskTitle) return null;
-      return msgC5aTaskReminder(
+      return msgTaskAssigned(
         str(payload.taskTitle),
+        typeof payload.due === "string" ? payload.due : undefined,
         deepLink("/tasks"),
+        lang,
       );
+    }
 
-    case "task.overdue":
-      return msgC5bOverdueTasks(
-        num(payload.count) || 1,
-        deepLink("/tasks"),
-      );
+    case "task.reminder": {
+      if (!payload.taskTitle) return null;
+      return msgC5aTaskReminder(str(payload.taskTitle), deepLink("/tasks"), lang);
+    }
 
-    case "session.reminder":
+    case "task.overdue": {
+      return msgC5bOverdueTasks(num(payload.count) || 1, deepLink("/tasks"), lang);
+    }
+
+    // ── Course Runs ─────────────────────────────────────────────────────────
+    case "courseRun.reminder":
+    case "session.reminder": {
       if (!payload.courseName) return null;
-      return msgC5cSessionReminder(
+      return msgCourseRunReminder(
         str(payload.courseName),
         str(payload.dateRange),
         str(payload.location),
         num(payload.registrationCount),
         deepLink(`/courses/${str(payload.courseSlug)}`),
+        lang,
       );
+    }
 
-    case "payment.pending":
+    case "courseRun.today":
+    case "session.today": {
+      const sessions = arr<{ courseName: string; location: string; registered: number }>(payload.sessions);
+      const count = num(payload.count) || sessions.length || 1;
+      return msgCourseRunToday(count, sessions, deepLink("/sessions"), lang);
+    }
+
+    case "courseRun.nearCapacity":
+    case "session.nearCapacity": {
+      if (!payload.courseName) return null;
+      const filled = num(payload.filled);
+      const capacity = num(payload.capacity);
+      const pct = capacity > 0 ? Math.round((filled / capacity) * 100) : 0;
+      return msgCourseRunNearCapacity(
+        str(payload.courseName),
+        filled,
+        capacity,
+        pct,
+        deepLink(`/courses/${str(payload.courseSlug)}`),
+        lang,
+      );
+    }
+
+    case "courseRun.capacityReached": {
+      if (!payload.courseName) return null;
+      return msgCourseRunCapacityReached(
+        str(payload.courseName),
+        num(payload.capacity),
+        deepLink(`/courses/${str(payload.courseSlug)}`),
+        lang,
+      );
+    }
+
+    case "courseRun.rescheduled": {
+      if (!payload.courseName) return null;
+      return msgCourseRunRescheduled(
+        str(payload.courseName),
+        str(payload.oldDate),
+        str(payload.newDate),
+        num(payload.affectedCount),
+        deepLink(`/courses/${str(payload.courseSlug)}`),
+        lang,
+      );
+    }
+
+    case "courseRun.locationChanged": {
+      if (!payload.courseName) return null;
+      return msgCourseRunLocationChanged(
+        str(payload.courseName),
+        str(payload.date),
+        str(payload.oldLocation),
+        str(payload.newLocation),
+        deepLink(`/courses/${str(payload.courseSlug)}`),
+        lang,
+      );
+    }
+
+    case "courseRun.cancelled": {
+      if (!payload.courseName) return null;
+      return msgCourseRunCancelled(
+        str(payload.courseName),
+        str(payload.date),
+        num(payload.affectedCount),
+        deepLink(`/courses/${str(payload.courseSlug)}`),
+        lang,
+      );
+    }
+
+    // ── Payments ────────────────────────────────────────────────────────────
+    case "payment.pending": {
       if (!payload.studentName) return null;
       return msgC5dPaymentPending(
         str(payload.studentName),
         str(payload.amount),
         str(payload.currency),
-        deepLink(`/payments`),
+        str(payload.method) || "—",
+        deepLink("/payments"),
+        lang,
       );
+    }
 
+    case "payment.recorded": {
+      if (!payload.studentName) return null;
+      return msgPaymentRecorded(
+        str(payload.studentName),
+        str(payload.amount),
+        str(payload.currency),
+        str(payload.courseName) || "—",
+        str(payload.sessionDate) || "—",
+        str(payload.salesRepName) || "—",
+        str(payload.method) || "—",
+        deepLink(`/payments`),
+        lang,
+      );
+    }
+
+    case "payment.confirmed": {
+      if (!payload.studentName) return null;
+      return msgPaymentConfirmed(
+        str(payload.studentName),
+        str(payload.amount),
+        str(payload.currency),
+        str(payload.method) || "—",
+        deepLink("/payments"),
+        lang,
+      );
+    }
+
+    case "payment.rejected": {
+      if (!payload.studentName) return null;
+      return msgPaymentRejected(
+        str(payload.studentName),
+        str(payload.amount),
+        str(payload.currency),
+        str(payload.reason) || "—",
+        deepLink("/payments"),
+        lang,
+      );
+    }
+
+    case "payment.balanceCleared": {
+      if (!payload.studentName) return null;
+      return msgPaymentBalanceCleared(
+        str(payload.studentName),
+        str(payload.courseName) || "—",
+        str(payload.totalPaid),
+        str(payload.currency),
+        deepLink(`/students/${str(payload.studentId)}`),
+        lang,
+      );
+    }
+
+    // ── Leads ───────────────────────────────────────────────────────────────
     case "lead.assigned": {
       const leadCount = num(payload.leadCount);
       if (leadCount > 1) {
-        return msgC5eLeadAssignedBulk(leadCount, deepLink("/leads?ownership=mine"));
+        return msgC5eLeadAssignedBulk(leadCount, deepLink("/leads?ownership=mine"), lang);
       }
       if (!payload.leadName) return null;
       return msgC5eLeadAssigned(
         str(payload.leadName),
         typeof payload.courseName === "string" ? payload.courseName : null,
         deepLink(`/leads/${str(payload.leadId)}`),
+        lang,
       );
     }
 
-    case "daily.digest":
-      if (!payload.date || !payload.stats) return null;
-      return msgC5fDailyDigest(
-        str(payload.date),
-        payload.stats as DailyDigestStats,
+    case "lead.reassigned": {
+      if (!payload.leadName) return null;
+      return msgLeadReassigned(
+        str(payload.leadName),
+        str(payload.fromRepName) || "another rep",
+        typeof payload.courseName === "string" ? payload.courseName : null,
+        deepLink(`/leads/${str(payload.leadId)}`),
+        lang,
       );
+    }
 
+    case "lead.unassignedAlert": {
+      return msgLeadUnassignedAlert(
+        num(payload.count) || 1,
+        deepLink("/leads?ownership=unassigned"),
+        lang,
+      );
+    }
+
+    case "team.overdueAlert": {
+      const reps = arr<{ name: string; count: number }>(payload.reps);
+      return msgTeamOverdueAlert(reps, deepLink("/leads"), lang);
+    }
+
+    // ── Registrations ───────────────────────────────────────────────────────
+    case "registration.confirmed": {
+      if (!payload.studentName) return null;
+      return msgRegistrationConfirmed(
+        str(payload.studentName),
+        str(payload.courseName),
+        str(payload.sessionDate),
+        str(payload.salesRepName),
+        str(payload.paymentStatus),
+        deepLink(`/students/${str(payload.studentId)}`),
+        lang,
+      );
+    }
+
+    case "registration.cancelled": {
+      if (!payload.studentName) return null;
+      return msgRegistrationCancelled(
+        str(payload.studentName),
+        str(payload.courseName),
+        str(payload.sessionDate),
+        str(payload.amountPaid) || "0",
+        str(payload.currency) || "DZD",
+        deepLink(`/students/${str(payload.studentId)}`),
+        lang,
+      );
+    }
+
+    case "registration.runChanged": {
+      if (!payload.studentName) return null;
+      return msgRegistrationRunChanged(
+        str(payload.studentName),
+        str(payload.courseName),
+        str(payload.oldDate),
+        str(payload.newDate),
+        deepLink(`/students/${str(payload.studentId)}`),
+        lang,
+      );
+    }
+
+    // ── Finance ─────────────────────────────────────────────────────────────
+    case "balance.outstanding": {
+      const role = str(payload.recipientRole);
+      if (role === "SALES") {
+        if (!payload.studentName) return null;
+        return msgBalanceOutstandingSales(
+          str(payload.studentName),
+          str(payload.remaining),
+          str(payload.currency) || "DZD",
+          deepLink(`/students/${str(payload.studentId)}`),
+          lang,
+        );
+      }
+      return msgBalanceOutstandingManager(
+        num(payload.pendingCount),
+        arr<{ currency: string; total: number }>(payload.byCurrency),
+        deepLink("/payments"),
+        lang,
+      );
+    }
+
+    case "expense.thresholdExceeded": {
+      if (!payload.title) return null;
+      return msgExpenseThresholdExceeded(
+        str(payload.title),
+        str(payload.category),
+        str(payload.amount),
+        str(payload.currency),
+        deepLink("/payments"),
+        lang,
+      );
+    }
+
+    // ── Attendance ──────────────────────────────────────────────────────────
+    case "attendance.noShow": {
+      if (!payload.studentName) return null;
+      return msgAttendanceNoShow(
+        str(payload.studentName),
+        str(payload.courseName),
+        str(payload.sessionDate),
+        deepLink(`/courses/${str(payload.courseSlug)}`),
+        lang,
+      );
+    }
+
+    // ── Daily Digest (role-aware) ────────────────────────────────────────────
+    case "daily.digest": {
+      if (!payload.date || !payload.stats) return null;
+      const stats = payload.stats as DailyDigestStats;
+      const role = str(payload.recipientRole);
+      if (role === "TRAINER") {
+        return msgDailyDigestTrainer(str(payload.date), stats, deepLink("/sessions"), lang);
+      }
+      if (role === "FINANCE") {
+        return msgDailyDigestFinance(str(payload.date), stats, deepLink("/payments"), lang);
+      }
+      if (role === "SALES") {
+        return msgDailyDigestSales(str(payload.date), stats, deepLink("/leads?ownership=mine"), lang);
+      }
+      return msgC5fDailyDigest(str(payload.date), stats, lang, deepLink("/"));
+    }
+
+    // ── Deprecated fallback ─────────────────────────────────────────────────
+    case "course.update":
     default: {
-      // Generic fallback for task.assigned, session.nearCapacity, course.update, etc.
       const title = typeof payload.title === "string" ? payload.title : null;
       const body = typeof payload.body === "string" ? payload.body : null;
       if (!title) return null;
@@ -110,12 +393,16 @@ export const TelegramProvider: NotificationProvider = {
     const enabled = await isPreferenceEnabled(intent.recipientId, intent.type, "telegram");
     if (!enabled) return;
 
-    const msg = formatMessage(intent);
+    // Determine user language for bilingual templates.
+    // Falls back to English — future: read from user profile or Telegram language_code.
+    const lang: Lang = "ar"; // TODO: read from user preferences when added
+
+    const msg = formatMessage(intent, lang);
     if (!msg) return;
 
     const result = await sendMessage(conn.telegramChatId, msg);
 
-    // 403 = user blocked the bot. Mark the connection and write an audit record.
+    // 403 = user blocked the bot. Mark connection BLOCKED and audit it.
     if (!result.ok && result.errorCode === 403) {
       prisma.telegramConnection
         .update({

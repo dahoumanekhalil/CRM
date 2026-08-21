@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/use-t";
 
 import { courseFilters } from "./courses-filters";
 import { COURSE_LEVELS, COURSE_STATUSES } from "@/lib/schemas/course";
@@ -37,6 +38,7 @@ export function CoursesToolbar({
   total: number;
   onNewCourse: () => void;
 }) {
+  const t = useT();
   const [filters, setFilters] = useQueryStates(courseFilters);
 
   const hasActiveFilters =
@@ -50,7 +52,7 @@ export function CoursesToolbar({
             containerClassName="flex-1"
             value={filters.q}
             onChange={(v) => setFilters({ q: v, page: 1 })}
-            placeholder="Search courses by name, category…"
+            placeholder={t("Search courses by name, category…")}
           />
           <Select
             value={filters.level}
@@ -65,10 +67,10 @@ export function CoursesToolbar({
               <SelectValue placeholder="Level" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">All levels</SelectItem>
+              <SelectItem value="ALL">{t("All levels")}</SelectItem>
               {COURSE_LEVELS.map((l) => (
                 <SelectItem key={l} value={l}>
-                  {humanize(l)}
+                  {t(humanize(l))}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -84,11 +86,11 @@ export function CoursesToolbar({
               }
               className="text-muted-foreground hover:text-foreground"
             >
-              <X className="size-3.5" /> Clear
+              <X className="size-3.5" /> {t("Clear")}
             </Button>
           ) : null}
           <Button onClick={onNewCourse} size="sm">
-            <Plus /> New course
+            <Plus /> {t("New course")}
           </Button>
         </div>
       </div>
@@ -108,7 +110,7 @@ export function CoursesToolbar({
                   : "border-border/70 text-muted-foreground hover:border-border hover:text-foreground"
               )}
             >
-              {tab.label}
+              {t(tab.label)}
               {tab.value === "ALL" ? (
                 <span className="ms-1.5 opacity-70 tabular-nums">{total}</span>
               ) : null}

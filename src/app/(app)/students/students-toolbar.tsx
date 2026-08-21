@@ -7,6 +7,7 @@ import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/primitives/search-input";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/use-t";
 
 import { studentFilters } from "./students-filters";
 import { exportStudentsCsv } from "./export";
@@ -25,6 +26,7 @@ export function StudentsToolbar({
   total: number;
   onNewStudent: () => void;
 }) {
+  const t = useT();
   const [filters, setFilters] = useQueryStates(studentFilters);
 
   const hasActiveFilters = filters.q !== "" || filters.tag !== "" || filters.paymentStatus !== "all";
@@ -37,7 +39,7 @@ export function StudentsToolbar({
             containerClassName="flex-1"
             value={filters.q}
             onChange={(v) => setFilters({ q: v, page: 1 })}
-            placeholder="Search by name, email or phone…"
+            placeholder={t("Search by name, email or phone…")}
           />
           {filters.tag ? (
             <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-2 py-1 text-xs">
@@ -61,11 +63,11 @@ export function StudentsToolbar({
               onClick={() => setFilters({ q: "", tag: "", paymentStatus: "all", page: 1 })}
               className="text-muted-foreground hover:text-foreground"
             >
-              <X className="size-3.5" /> Clear
+              <X className="size-3.5" /> {t("Clear")}
             </Button>
           ) : null}
           <span className="hidden text-xs tabular-nums text-muted-foreground sm:inline">
-            {total} {total === 1 ? "student" : "students"}
+            {total} {total === 1 ? t("student") : t("students")}
           </span>
           <CsvExportButton
             label="Export"
@@ -77,7 +79,7 @@ export function StudentsToolbar({
             }
           />
           <Button size="sm" onClick={onNewStudent}>
-            <Plus /> New student
+            <Plus /> {t("New student")}
           </Button>
         </div>
       </div>
@@ -96,7 +98,7 @@ export function StudentsToolbar({
                 : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground"
             )}
           >
-            {p.label}
+            {t(p.label)}
           </button>
         ))}
       </div>

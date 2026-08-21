@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/use-t";
 import { StatusBadge } from "@/components/primitives/status-badge";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,7 @@ function categoryColor(category: string | null): string {
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
 function CourseCard({ row }: { row: CourseRow }) {
+  const t = useT();
   const nextSession = row.sessions?.[0] ?? null;
   const price = formatPrice(row.basePrice, row.currency);
   const catColor = categoryColor(row.category);
@@ -103,7 +105,7 @@ function CourseCard({ row }: { row: CourseRow }) {
                 </span>
               )}
               <span className="text-[11px] text-muted-foreground">
-                {LEVEL_LABEL[row.level] ?? row.level}
+                {t(LEVEL_LABEL[row.level] ?? row.level)}
               </span>
             </div>
           </div>
@@ -125,14 +127,14 @@ function CourseCard({ row }: { row: CourseRow }) {
             <CalendarDays className="size-3.5 text-primary/60" />
             <span>
               <span className="font-medium text-foreground">{row._count.sessions}</span>{" "}
-              {row._count.sessions === 1 ? "run" : "runs"}
+              {row._count.sessions === 1 ? t("run") : t("runs")}
             </span>
           </span>
           {nextSession && (
             <span className="inline-flex items-center gap-1.5 truncate">
               <Clock className="size-3.5 shrink-0 text-primary/60" />
               <span className="truncate">
-                Next:{" "}
+                {t("Next:")}
                 <span className="font-medium text-foreground">
                   {format(nextSession.startDate, "MMM d, yyyy")}
                 </span>
@@ -151,7 +153,7 @@ function CourseCard({ row }: { row: CourseRow }) {
               <span className="font-medium text-foreground">
                 {nextSession._count.registrations}
               </span>{" "}
-              enrolled
+              {t("enrolled")}
             </span>
           )}
         </div>
@@ -163,7 +165,7 @@ function CourseCard({ row }: { row: CourseRow }) {
               {price}
             </span>
           ) : (
-            <span className="text-xs text-muted-foreground">No price set</span>
+            <span className="text-xs text-muted-foreground">{t("No price set")}</span>
           )}
           <span className="inline-flex items-center gap-0.5 text-xs font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
             View runs <ChevronRight className="size-3.5" />
@@ -178,14 +180,14 @@ function CourseCard({ row }: { row: CourseRow }) {
           className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <Plus className="size-3" />
-          New run
+          {t("New run")}
         </Link>
         <Link
           href={`/courses/${row.slug}?tab=landing`}
           className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <Globe className="size-3" />
-          Landing page
+          {t("Landing page")}
         </Link>
       </div>
     </div>
@@ -203,20 +205,21 @@ export function CoursesGrid({
   total: number;
   onNewCourse: () => void;
 }) {
+  const t = useT();
   const [filters, setFilters] = useQueryStates(courseFilters);
 
   const emptyState =
     filters.q || filters.status !== "ALL" || filters.level !== "ALL" ? (
       <EmptyState
         icon={BookOpen}
-        title="No courses match your filters"
-        description="Try clearing filters or searching for something else."
+        title={t("No courses match your filters")}
+        description={t("Try clearing filters or searching for something else.")}
         action={
           <Button
             variant="outline"
             onClick={() => setFilters({ q: "", status: "ALL", level: "ALL", page: 1 })}
           >
-            Clear filters
+            {t("Clear filters")}
           </Button>
         }
         className="border-0 bg-transparent py-16"
@@ -224,9 +227,9 @@ export function CoursesGrid({
     ) : (
       <EmptyState
         icon={BookOpen}
-        title="No courses yet"
-        description="Create your first course to start scheduling sessions."
-        action={<Button onClick={onNewCourse}>Create your first course</Button>}
+        title={t("No courses yet")}
+        description={t("Create your first course to start scheduling sessions.")}
+        action={<Button onClick={onNewCourse}>{t("Create your first course")}</Button>}
         className="border-0 bg-transparent py-16"
       />
     );

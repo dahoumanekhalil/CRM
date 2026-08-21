@@ -9,6 +9,7 @@ import { useQueryStates } from "nuqs";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/use-t";
 import { DataTable } from "@/components/tables/data-table";
 import { DataTableColumnHeader } from "@/components/tables/data-table-column-header";
 import { DataTablePagination } from "@/components/tables/data-table-pagination";
@@ -58,6 +59,7 @@ function statusConfig(status: string) {
 
 function NoteCell({ leadId, body }: { leadId: string; body: string | null | undefined }) {
   const router = useRouter();
+  const t = useT();
   const [open, setOpen] = React.useState(false);
   const preview = body && body.length > 30 ? body.slice(0, 30) + "…" : body;
 
@@ -86,7 +88,7 @@ function NoteCell({ leadId, body }: { leadId: string; body: string | null | unde
         className="opacity-0 group-hover:opacity-100 transition-opacity ms-auto shrink-0 flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted"
       >
         <Plus className="size-3" />
-        Note
+        {t("Note")}
       </button>
       <CommunicationSheet
         open={open}
@@ -142,6 +144,7 @@ export function LeadsTable({
   onRowSelectionChange: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
 }) {
   const router = useRouter();
+  const t = useT();
   const [filters, setFilters] = useQueryStates(leadFilters);
 
   const toggleSort = (key: "createdAt" | "firstName" | "status") => {
@@ -182,7 +185,7 @@ export function LeadsTable({
         accessorKey: "firstName",
         header: () => (
           <DataTableColumnHeader
-            title="Lead"
+            title={t("Lead")}
             sortDir={sortDirFor("firstName")}
             onToggleSort={() => toggleSort("firstName")}
           />
@@ -240,7 +243,7 @@ export function LeadsTable({
       },
       {
         id: "contact",
-        header: "Contact",
+        header: () => t("Contact"),
         cell: ({ row }) => (
           <div className="flex flex-col gap-1 text-sm">
             {row.original.phone ? (
@@ -271,12 +274,12 @@ export function LeadsTable({
       },
       {
         id: "source",
-        header: "Source",
+        header: () => t("Source"),
         cell: ({ row }) => <SourceCell source={(row.original as Record<string, unknown>).source as string | null} />,
       },
       {
         id: "lastNote",
-        header: "Last note",
+        header: () => t("Last note"),
         cell: ({ row }) => (
           <NoteCell leadId={row.original.id} body={row.original.communications?.[0]?.body} />
         ),
@@ -286,15 +289,15 @@ export function LeadsTable({
         header: () => (
           <span className="flex items-center gap-1.5 whitespace-nowrap">
             <AlarmClock className="size-3.5" />
-            Best time to call
+            {t("Best time to call")}
           </span>
         ),
         cell: ({ row }) => {
-          const t = (row.original as Record<string, unknown>).preferredCallTime as string | null;
-          return t ? (
+          const callTime = (row.original as Record<string, unknown>).preferredCallTime as string | null;
+          return callTime ? (
             <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400 whitespace-nowrap">
               <AlarmClock className="size-3" />
-              {t}
+              {callTime}
             </span>
           ) : (
             <span className="text-xs text-muted-foreground/40">—</span>
@@ -316,22 +319,22 @@ export function LeadsTable({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuLabel>{t("Actions")}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {onQuickView ? (
                   <DropdownMenuItem onSelect={() => onQuickView(row.original)}>
                     <Eye className="size-3.5" />
-                    Quick view
+                    {t("Quick view")}
                   </DropdownMenuItem>
                 ) : null}
                 <DropdownMenuItem asChild>
-                  <Link href={`/leads/${row.original.id}`}>Open</Link>
+                  <Link href={`/leads/${row.original.id}`}>{t("Open")}</Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem disabled>Edit</DropdownMenuItem>
-                <DropdownMenuItem disabled>Convert</DropdownMenuItem>
+                <DropdownMenuItem disabled>{t("Edit")}</DropdownMenuItem>
+                <DropdownMenuItem disabled>{t("Convert")}</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem disabled className="text-destructive focus:text-destructive">
-                  Delete
+                  {t("Delete")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -346,11 +349,11 @@ export function LeadsTable({
     filters.q || filters.status !== "ALL" ? (
       <EmptyState
         icon={Contact}
-        title="No leads match your filters"
-        description="Try clearing filters or searching for something else."
+        title={t("No leads match your filters")}
+        description={t("Try clearing filters or searching for something else.")}
         action={
           <Button variant="outline" onClick={() => setFilters({ q: "", status: "ALL", page: 1 })}>
-            Clear filters
+            {t("Clear filters")}
           </Button>
         }
         className="border-0 bg-transparent"
@@ -358,9 +361,9 @@ export function LeadsTable({
     ) : (
       <EmptyState
         icon={Contact}
-        title="No leads yet"
-        description="Create your first lead to start managing your sales pipeline."
-        action={<Button onClick={onNewLead}>Add your first lead</Button>}
+        title={t("No leads yet")}
+        description={t("Create your first lead to start managing your sales pipeline.")}
+        action={<Button onClick={onNewLead}>{t("Add your first lead")}</Button>}
         className="border-0 bg-transparent"
       />
     );

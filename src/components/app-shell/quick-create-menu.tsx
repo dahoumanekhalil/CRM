@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { filterCommands, type UserRole } from "./command-menu-registry";
+import { useT } from "@/lib/i18n/use-t";
 
 interface QuickCreateMenuProps {
   open: boolean;
@@ -14,6 +15,7 @@ interface QuickCreateMenuProps {
 
 export function QuickCreateMenu({ open, onClose, userRole }: QuickCreateMenuProps) {
   const router = useRouter();
+  const t = useT();
 
   const items = React.useMemo(
     () => filterCommands(userRole as UserRole | undefined).filter((c) => c.group === "create"),
@@ -60,21 +62,21 @@ export function QuickCreateMenu({ open, onClose, userRole }: QuickCreateMenuProp
       {/* Panel */}
       <div
         role="dialog"
-        aria-label="Quick create"
+        aria-label={t("Quick create")}
         aria-modal="true"
         className="fixed start-1/2 top-1/2 z-50 w-full max-w-xs -translate-x-1/2 -translate-y-1/2 animate-in fade-in-0 zoom-in-95 duration-150 rounded-2xl border border-border/70 bg-card shadow-2xl shadow-black/20"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
           <div>
-            <p className="text-sm font-semibold">Quick create</p>
-            <p className="text-xs text-muted-foreground">Press a number key to jump</p>
+            <p className="text-sm font-semibold">{t("Quick create")}</p>
+            <p className="text-xs text-muted-foreground">{t("Press a number key to jump")}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="grid size-6 place-items-center rounded text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Close"
+            aria-label={t("Close")}
           >
             <X className="size-4" />
           </button>
@@ -98,7 +100,7 @@ export function QuickCreateMenu({ open, onClose, userRole }: QuickCreateMenuProp
                     {n}
                   </span>
                   <Icon className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
-                  <span className="text-sm font-medium">{item.label}</span>
+                  <span className="text-sm font-medium">{t(item.label)}</span>
                 </button>
               </li>
             );
@@ -111,11 +113,11 @@ export function QuickCreateMenu({ open, onClose, userRole }: QuickCreateMenuProp
             <kbd className="inline-flex h-4 min-w-4 items-center justify-center rounded border border-border/70 bg-muted px-1 font-mono text-[10px]">
               C
             </kbd>
-            to open ·
+            {t("to open")} ·
             <kbd className="inline-flex h-4 min-w-4 items-center justify-center rounded border border-border/70 bg-muted px-1 font-mono text-[10px]">
               Esc
             </kbd>
-            to close
+            {t("to close")}
           </span>
         </div>
       </div>

@@ -9,6 +9,7 @@ import { Kbd } from "@/components/primitives/kbd";
 import { ThemeToggle } from "./theme-toggle";
 import { DirectionToggle } from "./direction-toggle";
 import { NotificationBell } from "./notification-bell";
+import { useT } from "@/lib/i18n/use-t";
 
 interface AppTopbarProps {
   onOpenCommand: () => void;
@@ -21,6 +22,7 @@ export function AppTopbar({
   onOpenQuickCreate,
   initialUnreadCount = 0,
 }: AppTopbarProps) {
+  const t = useT();
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border/70 bg-background/80 px-3 backdrop-blur-md md:px-4">
       <SidebarTrigger className="-ms-1" />
@@ -33,7 +35,7 @@ export function AppTopbar({
       >
         <Search className="size-4" />
         <span className="flex-1 truncate text-start">
-          Search or jump to…
+          {t("Search or jump to…")}
         </span>
         <Kbd className="group-hover:border-border">⌘K</Kbd>
       </button>
@@ -43,9 +45,9 @@ export function AppTopbar({
           size="sm"
           className="hidden md:inline-flex"
           onClick={onOpenQuickCreate}
-          title="Quick create (C)"
+          title={t("Quick create (C)")}
         >
-          <Plus /> Create
+          <Plus /> {t("Create")}
           <Kbd className="ms-1 border-primary-foreground/30 bg-primary-foreground/10 text-primary-foreground/80">
             C
           </Kbd>

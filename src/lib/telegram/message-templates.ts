@@ -11,6 +11,10 @@ export function escHtml(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
+function link(url: string, label: string): string {
+  return url ? `<a href="${url}">${label}</a>` : "";
+}
+
 // ── Bot onboarding ────────────────────────────────────────────────────────────
 
 export function msgWelcome(lang: Lang = "en"): string {
@@ -18,8 +22,6 @@ export function msgWelcome(lang: Lang = "en"): string {
     ? `👋 <b>مرحباً بك في بوت Webscale CRM</b>\n\nأرسل <code>/start &lt;رمز&gt;</code> لربط حسابك.\nاحصل على الرمز من <b>الإعدادات → الإشعارات</b>.\n\nاكتب /help لعرض جميع الأوامر.`
     : `👋 <b>Welcome to Webscale CRM Bot</b>\n\nSend <code>/start &lt;token&gt;</code> to connect your account.\nGet your token from <b>Settings → Notifications</b>.\n\nType /help to see all commands.`;
 }
-
-// ── Bot commands ──────────────────────────────────────────────────────────────
 
 export function msgHelp(lang: Lang = "en"): string {
   return lang === "ar"
@@ -51,27 +53,61 @@ export function msgStatusNotConnected(lang: Lang = "en"): string {
 }
 
 const PREF_LABELS_EN: Record<string, string> = {
+  "task.assigned": "Task assignments",
   "task.reminder": "Task reminders",
   "task.overdue": "Overdue task alerts",
-  "task.assigned": "Task assignments",
-  "session.reminder": "Session reminders",
-  "session.nearCapacity": "Session capacity alerts",
-  "payment.pending": "Payment alerts",
+  "courseRun.nearCapacity": "Course Run capacity alerts",
+  "courseRun.capacityReached": "Course Run full alerts",
+  "courseRun.reminder": "Course Run reminders",
+  "courseRun.today": "Today's Course Runs",
+  "courseRun.rescheduled": "Course Run rescheduled",
+  "courseRun.locationChanged": "Course Run location changed",
+  "courseRun.cancelled": "Course Run cancelled",
+  "payment.pending": "Payment pending alerts",
+  "payment.recorded": "Payment recorded",
+  "payment.confirmed": "Payment confirmed",
+  "payment.rejected": "Payment rejected",
+  "payment.balanceCleared": "Balance cleared",
   "lead.assigned": "Lead assignments",
+  "lead.reassigned": "Lead reassignments",
+  "lead.unassignedAlert": "Unassigned leads alert",
+  "team.overdueAlert": "Team overdue alert",
+  "registration.confirmed": "Registration confirmed",
+  "registration.cancelled": "Registration cancelled",
+  "registration.runChanged": "Course Run changed",
+  "balance.outstanding": "Outstanding balance summary",
+  "expense.thresholdExceeded": "High expense alert",
+  "attendance.noShow": "No show alerts",
   "daily.digest": "Daily digest",
-  "course.update": "Course updates",
 };
 
 const PREF_LABELS_AR: Record<string, string> = {
+  "task.assigned": "تعيينات المهام",
   "task.reminder": "تذكيرات المهام",
   "task.overdue": "تنبيهات المهام المتأخرة",
-  "task.assigned": "تعيينات المهام",
-  "session.reminder": "تذكيرات الجلسات",
-  "session.nearCapacity": "تنبيهات سعة الجلسات",
-  "payment.pending": "تنبيهات المدفوعات",
-  "lead.assigned": "تعيينات العملاء",
+  "courseRun.nearCapacity": "تنبيهات اقتراب اكتمال الدورات",
+  "courseRun.capacityReached": "تنبيهات اكتمال الدورات",
+  "courseRun.reminder": "تذكيرات الدورات الجارية",
+  "courseRun.today": "دوراتك اليوم",
+  "courseRun.rescheduled": "إعادة جدولة الدورة",
+  "courseRun.locationChanged": "تغيير موقع الدورة",
+  "courseRun.cancelled": "إلغاء الدورة",
+  "payment.pending": "تنبيهات المدفوعات المعلقة",
+  "payment.recorded": "تسجيل الدفعة",
+  "payment.confirmed": "تأكيد الدفعة",
+  "payment.rejected": "رفض الدفعة",
+  "payment.balanceCleared": "تسوية الرصيد",
+  "lead.assigned": "تعيينات العملاء المحتملين",
+  "lead.reassigned": "إعادة تعيين العملاء",
+  "lead.unassignedAlert": "تنبيه عملاء بدون مسؤول",
+  "team.overdueAlert": "تنبيه متابعات الفريق المتأخرة",
+  "registration.confirmed": "تسجيل مؤكد",
+  "registration.cancelled": "إلغاء تسجيل",
+  "registration.runChanged": "تغيير الدورة الجارية",
+  "balance.outstanding": "ملخص الأرصدة المستحقة",
+  "expense.thresholdExceeded": "تنبيه مصروف مرتفع",
+  "attendance.noShow": "تنبيهات الغياب",
   "daily.digest": "الملخص اليومي",
-  "course.update": "تحديثات الدورات",
 };
 
 export function msgNotificationPrefs(
@@ -80,7 +116,6 @@ export function msgNotificationPrefs(
 ): string {
   const labels = lang === "ar" ? PREF_LABELS_AR : PREF_LABELS_EN;
   const lines = Object.entries(labels).map(([type, label]) => {
-    // Default true when no preference row exists (matches ensureDefaultPreferences behaviour)
     const enabled = prefs[type] !== false;
     return `${enabled ? "✅" : "❌"} ${label}`;
   });
@@ -121,166 +156,427 @@ export function msgLinkAlreadyConnected(lang: Lang = "en"): string {
     : `ℹ️ Your account is already connected. Use <b>Settings → Notifications</b> to manage preferences.`;
 }
 
-// ── Task notifications ────────────────────────────────────────────────────────
+// ── Tasks ─────────────────────────────────────────────────────────────────────
 
 export function msgTaskAssigned(
   title: string,
   due: string | undefined,
+  deepLinkUrl: string,
   lang: Lang = "en"
 ): string {
   const dueLine = due
-    ? lang === "ar"
-      ? `\n⏰ الموعد النهائي: ${due}`
-      : `\n⏰ Due: ${due}`
+    ? lang === "ar" ? `\n⏰ الموعد النهائي: ${due}` : `\n⏰ Due: ${due}`
     : "";
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح المهمة" : "Open Task")}` : "";
   return lang === "ar"
-    ? `📋 <b>تم تكليفك بمهمة جديدة</b>\n\n${escHtml(title)}${dueLine}`
-    : `📋 <b>New task assigned to you</b>\n\n${escHtml(title)}${dueLine}`;
+    ? `📋 <b>تم تكليفك بمهمة جديدة</b>\n\n${escHtml(title)}${dueLine}${linkLine}`
+    : `📋 <b>New task assigned to you</b>\n\n${escHtml(title)}${dueLine}${linkLine}`;
 }
-
-export function msgTaskReminder(
-  title: string,
-  due: string,
-  lang: Lang = "en"
-): string {
-  return lang === "ar"
-    ? `⏰ <b>تذكير بمهمة</b>\n\n${escHtml(title)}\nتستحق خلال 30 دقيقة: ${due}`
-    : `⏰ <b>Task reminder</b>\n\n${escHtml(title)}\nDue in 30 minutes: ${due}`;
-}
-
-export function msgTaskOverdue(title: string, lang: Lang = "en"): string {
-  return lang === "ar"
-    ? `🚨 <b>مهمة متأخرة</b>\n\n${escHtml(title)}\nتجاوزت هذه المهمة موعدها النهائي.`
-    : `🚨 <b>Overdue task</b>\n\n${escHtml(title)}\nThis task is past its due date.`;
-}
-
-// ── Session notifications ─────────────────────────────────────────────────────
-
-export function msgSessionReminder(
-  courseName: string,
-  time: string,
-  location: string,
-  lang: Lang = "en"
-): string {
-  return lang === "ar"
-    ? `📅 <b>تذكير بجلسة</b>\n\n${escHtml(courseName)}\n🕐 تبدأ خلال ساعة: ${time}\n📍 ${escHtml(location)}`
-    : `📅 <b>Session reminder</b>\n\n${escHtml(courseName)}\n🕐 Starts in 1 hour: ${time}\n📍 ${escHtml(location)}`;
-}
-
-export function msgSessionNearCapacity(
-  sessionName: string,
-  pct: number,
-  filled: number,
-  total: number,
-  lang: Lang = "en"
-): string {
-  return lang === "ar"
-    ? `📊 <b>الجلسة تقترب من الاكتمال</b>\n\n${escHtml(sessionName)}\nالسعة: ${filled}/${total} (${pct}%)`
-    : `📊 <b>Session near capacity</b>\n\n${escHtml(sessionName)}\n${filled}/${total} seats filled (${pct}%)`;
-}
-
-// ── Payment notifications ─────────────────────────────────────────────────────
-
-export function msgPaymentPending(
-  amount: string,
-  currency: string,
-  lang: Lang = "en"
-): string {
-  return lang === "ar"
-    ? `💰 <b>دفعة تحتاج إلى تأكيد</b>\n\nالمبلغ: ${escHtml(amount)} ${escHtml(currency)}`
-    : `💰 <b>Payment needs confirmation</b>\n\nAmount: ${escHtml(amount)} ${escHtml(currency)}`;
-}
-
-// ── Lead notifications ────────────────────────────────────────────────────────
-
-export function msgLeadAssigned(name: string, lang: Lang = "en"): string {
-  return lang === "ar"
-    ? `👤 <b>تم تعيين عميل محتمل جديد لك</b>\n\n${escHtml(name)}`
-    : `👤 <b>New lead assigned to you</b>\n\n${escHtml(name)}`;
-}
-
-// ── C5 notification types ─────────────────────────────────────────────────────
 
 // C5a — Task reminder (30 min before due)
 export function msgC5aTaskReminder(
   taskTitle: string,
-  deepLink: string,
+  deepLinkUrl: string,
   lang: Lang = "en"
 ): string {
-  const link = deepLink ? `\n<a href="${deepLink}">Open Tasks</a>` : "";
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح المهام" : "Open Tasks")}` : "";
   return lang === "ar"
-    ? `🔔 <b>تذكير بمهمة</b>\n\nمهمتك مستحقة خلال 30 دقيقة.\n${escHtml(taskTitle)}${link}`
-    : `🔔 <b>Reminder</b>\n\nYour task is due in 30 minutes.\n${escHtml(taskTitle)}${link}`;
+    ? `🔔 <b>تذكير بمهمة</b>\n\nمهمتك مستحقة خلال 30 دقيقة.\n${escHtml(taskTitle)}${linkLine}`
+    : `🔔 <b>Reminder</b>\n\nYour task is due in 30 minutes.\n${escHtml(taskTitle)}${linkLine}`;
 }
 
-// C5b — Overdue tasks count (daily at 09:00)
+// C5b — Overdue tasks count (daily)
 export function msgC5bOverdueTasks(
   count: number,
-  deepLink: string,
+  deepLinkUrl: string,
   lang: Lang = "en"
 ): string {
-  const link = deepLink ? `\n<a href="${deepLink}">Open CRM</a>` : "";
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح CRM" : "Open CRM")}` : "";
   return lang === "ar"
-    ? `⚠️ <b>مهام متأخرة</b>\n\nلديك ${count} مهمة${count > 1 ? "" : ""} متأخرة.${link}`
-    : `⚠️ <b>Overdue Tasks</b>\n\nYou have ${count} overdue task${count !== 1 ? "s" : ""}.${link}`;
+    ? `⚠️ <b>مهام متأخرة</b>\n\nلديك ${count} مهمة متأخرة.${linkLine}`
+    : `⚠️ <b>Overdue Tasks</b>\n\nYou have ${count} overdue task${count !== 1 ? "s" : ""}.${linkLine}`;
 }
 
-// C5c — Session reminder (1 hour before start)
-export function msgC5cSessionReminder(
+// ── Course Runs (الدورات الجارية) ────────────────────────────────────────────
+
+// C5c — Course Run reminder (1 hour before start)
+export function msgCourseRunReminder(
   courseName: string,
   dateRange: string,
   location: string,
   registrationCount: number,
-  deepLink: string,
+  deepLinkUrl: string,
   lang: Lang = "en"
 ): string {
-  const link = deepLink ? `\n<a href="${deepLink}">View Session</a>` : "";
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح الدورة" : "View Course Run")}` : "";
   return lang === "ar"
-    ? `📚 <b>تذكير بجلسة</b>\n\n${escHtml(courseName)}\n${escHtml(dateRange)}\n📍 ${escHtml(location)}\n👥 ${registrationCount} طالب مسجل${link}`
-    : `📚 <b>Session Reminder</b>\n\n${escHtml(courseName)}\n${escHtml(dateRange)}\n📍 ${escHtml(location)}\n👥 ${registrationCount} registered student${registrationCount !== 1 ? "s" : ""}${link}`;
+    ? `📚 <b>تذكير بالدورة الجارية</b>\n\n${escHtml(courseName)}\n${escHtml(dateRange)}\n📍 ${escHtml(location)}\n👥 ${registrationCount} طالب مسجل${linkLine}`
+    : `📚 <b>Course Run Reminder</b>\n\n${escHtml(courseName)}\n${escHtml(dateRange)}\n📍 ${escHtml(location)}\n👥 ${registrationCount} registered student${registrationCount !== 1 ? "s" : ""}${linkLine}`;
 }
 
-// C5d — Payment pending reminder (>24h still pending)
+// Course Run today — grouped per trainer
+export function msgCourseRunToday(
+  count: number,
+  sessions: Array<{ courseName: string; location: string; registered: number }>,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح الجدول" : "Open Schedule")}` : "";
+  if (count === 1 && sessions[0]) {
+    const s = sessions[0];
+    return lang === "ar"
+      ? `🔔 <b>لديك دورة جارية اليوم</b>\n\n${escHtml(s.courseName)}\n📍 ${escHtml(s.location)}\n👥 ${s.registered} طالب${linkLine}`
+      : `🔔 <b>Course Run Today</b>\n\n${escHtml(s.courseName)}\n📍 ${escHtml(s.location)}\n👥 ${s.registered} student${s.registered !== 1 ? "s" : ""}${linkLine}`;
+  }
+  const lines = sessions
+    .slice(0, 5)
+    .map((s) => `• ${escHtml(s.courseName)} — ${s.registered} ${lang === "ar" ? "طالب" : "students"}`)
+    .join("\n");
+  return lang === "ar"
+    ? `🔔 <b>لديك ${count} دورات جارية اليوم</b>\n\n${lines}${linkLine}`
+    : `🔔 <b>You have ${count} Course Runs today</b>\n\n${lines}${linkLine}`;
+}
+
+// Course Run near capacity
+export function msgCourseRunNearCapacity(
+  courseName: string,
+  filled: number,
+  capacity: number,
+  pct: number,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const remaining = capacity - filled;
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح الدورة" : "Open Course Run")}` : "";
+  return lang === "ar"
+    ? `📊 <b>الدورة تقترب من الاكتمال</b>\n\n${escHtml(courseName)}\n\n${filled} / ${capacity} مقعد مشغول — ${pct}%\n\n${remaining} مقعد متبقٍ${linkLine}`
+    : `📊 <b>Course Run Near Capacity</b>\n\n${escHtml(courseName)}\n\n${filled} / ${capacity} seats filled\n${pct}%\n\n${remaining} seat${remaining !== 1 ? "s" : ""} remaining${linkLine}`;
+}
+
+// Course Run full (capacity reached)
+export function msgCourseRunCapacityReached(
+  courseName: string,
+  capacity: number,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح الدورة" : "Open Course Run")}` : "";
+  return lang === "ar"
+    ? `🔴 <b>الدورة اكتملت</b>\n\n${escHtml(courseName)}\n\n${capacity} / ${capacity} مقعد مشغول.\n\nلا توجد مقاعد متاحة.${linkLine}`
+    : `🔴 <b>Course Run Full</b>\n\n${escHtml(courseName)}\n\n${capacity} / ${capacity} seats filled.\n\nNo seats remaining.${linkLine}`;
+}
+
+// Course Run rescheduled (CRITICAL)
+export function msgCourseRunRescheduled(
+  courseName: string,
+  oldDate: string,
+  newDate: string,
+  affectedCount: number,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح الدورة" : "Open Course Run")}` : "";
+  return lang === "ar"
+    ? `🚨 <b>تم إعادة جدولة الدورة</b>\n\n${escHtml(courseName)}\n\nالموعد القديم: ${escHtml(oldDate)}\nالموعد الجديد: ${escHtml(newDate)}\n\nالتسجيلات المتأثرة: ${affectedCount}${linkLine}`
+    : `🚨 <b>Course Run Rescheduled</b>\n\n${escHtml(courseName)}\n\nOld: ${escHtml(oldDate)}\nNew: ${escHtml(newDate)}\n\nAffected registrations: ${affectedCount}${linkLine}`;
+}
+
+// Course Run location changed
+export function msgCourseRunLocationChanged(
+  courseName: string,
+  date: string,
+  oldLocation: string,
+  newLocation: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح الدورة" : "Open Course Run")}` : "";
+  return lang === "ar"
+    ? `📍 <b>تغيّر موقع الدورة</b>\n\n${escHtml(courseName)}\n${escHtml(date)}\n\nالموقع السابق: ${escHtml(oldLocation)}\nالموقع الجديد: ${escHtml(newLocation)}${linkLine}`
+    : `📍 <b>Course Location Changed</b>\n\n${escHtml(courseName)}\n${escHtml(date)}\n\nPrevious: ${escHtml(oldLocation)}\nNew: ${escHtml(newLocation)}${linkLine}`;
+}
+
+// Course Run cancelled (CRITICAL)
+export function msgCourseRunCancelled(
+  courseName: string,
+  date: string,
+  affectedCount: number,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح الدورة" : "Open Course Run")}` : "";
+  return lang === "ar"
+    ? `🚨 <b>تم إلغاء الدورة</b>\n\n${escHtml(courseName)}\n${escHtml(date)}\n\nالتسجيلات المتأثرة: ${affectedCount}\n\nيرجى التواصل مع الطلاب المتأثرين.${linkLine}`
+    : `🚨 <b>Course Run Cancelled</b>\n\n${escHtml(courseName)}\n${escHtml(date)}\n\nAffected registrations: ${affectedCount}\n\nPlease contact affected customers.${linkLine}`;
+}
+
+// ── Payments ──────────────────────────────────────────────────────────────────
+
+// C5d — Payment pending (>24h still pending)
 export function msgC5dPaymentPending(
   studentName: string,
   amount: string,
   currency: string,
-  deepLink: string,
+  method: string,
+  deepLinkUrl: string,
   lang: Lang = "en"
 ): string {
-  const link = deepLink ? `\n<a href="${deepLink}">View in CRM</a>` : "";
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح الدفعة" : "Open Payment")}` : "";
   return lang === "ar"
-    ? `💳 <b>تذكير بدفعة معلقة</b>\n\nدفعة ${escHtml(studentName)} لا تزال معلقة.\nالمبلغ: ${escHtml(amount)} ${escHtml(currency)}${link}`
-    : `💳 <b>Payment Reminder</b>\n\n${escHtml(studentName)}'s payment is still pending.\nAmount: ${escHtml(amount)} ${escHtml(currency)}${link}`;
+    ? `💳 <b>تذكير بدفعة معلقة</b>\n\nدفعة ${escHtml(studentName)} لا تزال معلقة.\nالمبلغ: ${escHtml(amount)} ${escHtml(currency)}\nالطريقة: ${escHtml(method)}${linkLine}`
+    : `💳 <b>Payment Awaiting Confirmation</b>\n\n${escHtml(studentName)}\n\nAmount: ${escHtml(amount)} ${escHtml(currency)}\nMethod: ${escHtml(method)}\n\nThis payment is still awaiting confirmation.${linkLine}`;
 }
 
-// C5e — New lead assigned to you
+// Payment recorded — to Sales owner and Manager
+export function msgPaymentRecorded(
+  studentName: string,
+  amount: string,
+  currency: string,
+  courseName: string,
+  sessionDate: string,
+  salesRepName: string,
+  method: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح الدفعة" : "Open Payment")}` : "";
+  return lang === "ar"
+    ? `💳 <b>دفعة جديدة</b>\n\nتم تسجيل دفعة جديدة:\n\nالعميل: ${escHtml(studentName)}\nالقيمة: ${escHtml(amount)} ${escHtml(currency)}\nالدورة: ${escHtml(courseName)}\nالدورات الجارية: ${escHtml(sessionDate)}\nمسؤول المبيعات: ${escHtml(salesRepName)}\nطريقة الدفع: ${escHtml(method)}${linkLine}`
+    : `💳 <b>New Payment</b>\n\nA new payment has been recorded.\n\nCustomer: ${escHtml(studentName)}\nAmount: ${escHtml(amount)} ${escHtml(currency)}\nCourse: ${escHtml(courseName)}\nCourse Run: ${escHtml(sessionDate)}\nSales Representative: ${escHtml(salesRepName)}\nMethod: ${escHtml(method)}${linkLine}`;
+}
+
+// Payment confirmed
+export function msgPaymentConfirmed(
+  studentName: string,
+  amount: string,
+  currency: string,
+  method: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح الدفعة" : "Open Payment")}` : "";
+  return lang === "ar"
+    ? `✅ <b>تم تأكيد الدفعة</b>\n\n${escHtml(studentName)}\n\n${escHtml(amount)} ${escHtml(currency)}\nالطريقة: ${escHtml(method)}${linkLine}`
+    : `✅ <b>Payment Confirmed</b>\n\n${escHtml(studentName)}\n\n${escHtml(amount)} ${escHtml(currency)}\nMethod: ${escHtml(method)}${linkLine}`;
+}
+
+// Payment rejected
+export function msgPaymentRejected(
+  studentName: string,
+  amount: string,
+  currency: string,
+  reason: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح الدفعة" : "Open Payment")}` : "";
+  return lang === "ar"
+    ? `❌ <b>تم رفض الدفعة</b>\n\n${escHtml(studentName)}\n\n${escHtml(amount)} ${escHtml(currency)}\n\nالسبب: ${escHtml(reason)}${linkLine}`
+    : `❌ <b>Payment Rejected</b>\n\n${escHtml(studentName)}\n\n${escHtml(amount)} ${escHtml(currency)}\n\nReason: ${escHtml(reason)}${linkLine}`;
+}
+
+// Balance cleared (totalPaid >= agreedPrice)
+export function msgPaymentBalanceCleared(
+  studentName: string,
+  courseName: string,
+  totalPaid: string,
+  currency: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح التسجيل" : "Open Registration")}` : "";
+  return lang === "ar"
+    ? `✅ <b>تمت تسوية الرصيد</b>\n\n${escHtml(studentName)}\n${escHtml(courseName)}\n\nإجمالي المدفوع: ${escHtml(totalPaid)} ${escHtml(currency)}\nالرصيد: 0 ${escHtml(currency)}${linkLine}`
+    : `✅ <b>Payment Completed</b>\n\n${escHtml(studentName)}\n${escHtml(courseName)}\n\nFull amount paid: ${escHtml(totalPaid)} ${escHtml(currency)}\nBalance: 0 ${escHtml(currency)}${linkLine}`;
+}
+
+// ── Leads ─────────────────────────────────────────────────────────────────────
+
+// C5e — New lead assigned to you (single)
 export function msgC5eLeadAssigned(
   leadName: string,
   courseName: string | null,
-  deepLink: string,
+  deepLinkUrl: string,
   lang: Lang = "en"
 ): string {
   const courseLinear = courseName ? `\n${escHtml(courseName)}` : "";
-  const link = deepLink ? `\n<a href="${deepLink}">Open Lead</a>` : "";
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح العميل" : "Open Lead")}` : "";
   return lang === "ar"
-    ? `👤 <b>عميل محتمل جديد</b>\n\nتم تعيين ${escHtml(leadName)} لك.${courseLinear}${link}`
-    : `👤 <b>New Lead</b>\n\n${escHtml(leadName)} has been assigned to you.${courseLinear}${link}`;
+    ? `👤 <b>عميل محتمل جديد</b>\n\nتم تعيين ${escHtml(leadName)} لك.${courseLinear}${linkLine}`
+    : `👤 <b>New Lead</b>\n\n${escHtml(leadName)} has been assigned to you.${courseLinear}${linkLine}`;
 }
 
-// C5e-bulk — Multiple leads assigned in a single batch action
+// C5e-bulk — Multiple leads assigned
 export function msgC5eLeadAssignedBulk(
   count: number,
-  deepLink: string,
+  deepLinkUrl: string,
   lang: Lang = "en"
 ): string {
-  const link = deepLink ? `\n<a href="${deepLink}">Open My Leads</a>` : "";
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح عملائي" : "Open My Leads")}` : "";
   return lang === "ar"
-    ? `📥 <b>عملاء محتملون جدد</b>\n\nتم تعيين <b>${count}</b> عملاء محتملين جدد لك.${link}`
-    : `📥 <b>New Leads Assigned</b>\n\nYou received <b>${count}</b> new lead${count !== 1 ? "s" : ""} to follow up.${link}`;
+    ? `📥 <b>عملاء محتملون جدد</b>\n\nتم تعيين <b>${count}</b> عملاء محتملين جدد لك.${linkLine}`
+    : `📥 <b>New Leads Assigned</b>\n\nYou received <b>${count}</b> new lead${count !== 1 ? "s" : ""} to follow up.${linkLine}`;
 }
 
-// C5f — Daily digest
+// Lead reassigned to you
+export function msgLeadReassigned(
+  leadName: string,
+  fromRepName: string,
+  courseName: string | null,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const courseLinear = courseName ? `\n${escHtml(courseName)}` : "";
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح العميل" : "Open Lead")}` : "";
+  return lang === "ar"
+    ? `🔄 <b>تم تحويل عميل محتمل إليك</b>\n\n${escHtml(leadName)}\n\nتم نقل هذا العميل إليك من ${escHtml(fromRepName)}.${courseLinear}${linkLine}`
+    : `🔄 <b>Lead Assigned to You</b>\n\n${escHtml(leadName)}\n\nThis lead was transferred to you from ${escHtml(fromRepName)}.${courseLinear}${linkLine}`;
+}
+
+// Unassigned leads alert — for managers
+export function msgLeadUnassignedAlert(
+  count: number,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح عمليات المبيعات" : "Open Sales Operations")}` : "";
+  return lang === "ar"
+    ? `🔔 <b>عملاء بانتظار التعيين</b>\n\n${count} عميل محتمل نشط بدون مسؤول مبيعات.${linkLine}`
+    : `🔔 <b>Leads Waiting for Assignment</b>\n\n${count} active lead${count !== 1 ? "s" : ""} have no Sales Representative.${linkLine}`;
+}
+
+// Team overdue leads alert — for managers
+export function msgTeamOverdueAlert(
+  reps: Array<{ name: string; count: number }>,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const lines = reps.map((r) => `${escHtml(r.name)} — ${r.count} ${lang === "ar" ? "متأخر" : "overdue"}`).join("\n");
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح عمليات المبيعات" : "Open Sales Operations")}` : "";
+  return lang === "ar"
+    ? `⚠️ <b>تنبيه متابعات الفريق</b>\n\n${lines}${linkLine}`
+    : `⚠️ <b>Sales Follow-up Alert</b>\n\n${lines}${linkLine}`;
+}
+
+// ── Registrations ─────────────────────────────────────────────────────────────
+
+// Registration confirmed — for Sales Manager/Admin
+export function msgRegistrationConfirmed(
+  studentName: string,
+  courseName: string,
+  sessionDate: string,
+  salesRepName: string,
+  paymentStatus: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح التسجيل" : "Open Registration")}` : "";
+  return lang === "ar"
+    ? `🎓 <b>تسجيل جديد مؤكد</b>\n\nتم تأكيد تسجيل عميل جديد:\n\n${escHtml(studentName)}\n\nالدورة: ${escHtml(courseName)}\nالدورات الجارية: ${escHtml(sessionDate)}\nمسؤول المبيعات: ${escHtml(salesRepName)}\nحالة الدفع: ${escHtml(paymentStatus)}${linkLine}`
+    : `🎓 <b>New Confirmed Registration</b>\n\n${escHtml(studentName)}\n\nCourse: ${escHtml(courseName)}\nCourse Run: ${escHtml(sessionDate)}\nSales Representative: ${escHtml(salesRepName)}\nPayment: ${escHtml(paymentStatus)}${linkLine}`;
+}
+
+// Registration cancelled
+export function msgRegistrationCancelled(
+  studentName: string,
+  courseName: string,
+  sessionDate: string,
+  amountPaid: string,
+  currency: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح التسجيل" : "Open Registration")}` : "";
+  const hasPaid = amountPaid !== "0";
+  const financeLine = hasPaid
+    ? lang === "ar"
+      ? `\n\nالمبلغ المدفوع: ${escHtml(amountPaid)} ${escHtml(currency)}\n\nقد تكون متابعة مالية مطلوبة.`
+      : `\n\nPaid: ${escHtml(amountPaid)} ${escHtml(currency)}\n\nA financial follow-up may be required.`
+    : "";
+  return lang === "ar"
+    ? `❌ <b>تم إلغاء التسجيل</b>\n\n${escHtml(studentName)}\n\n${escHtml(courseName)}\n${escHtml(sessionDate)}${financeLine}${linkLine}`
+    : `❌ <b>Registration Cancelled</b>\n\n${escHtml(studentName)}\n\n${escHtml(courseName)}\n${escHtml(sessionDate)}${financeLine}${linkLine}`;
+}
+
+// Registration course run changed
+export function msgRegistrationRunChanged(
+  studentName: string,
+  courseName: string,
+  oldDate: string,
+  newDate: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح التسجيل" : "Open Registration")}` : "";
+  return lang === "ar"
+    ? `📅 <b>تغيّرت الدورة الجارية</b>\n\n${escHtml(studentName)}\n${escHtml(courseName)}\n\nالسابق: ${escHtml(oldDate)}\nالجديد: ${escHtml(newDate)}${linkLine}`
+    : `📅 <b>Course Run Changed</b>\n\n${escHtml(studentName)}\n${escHtml(courseName)}\n\nPrevious: ${escHtml(oldDate)}\nNew: ${escHtml(newDate)}${linkLine}`;
+}
+
+// ── Attendance ────────────────────────────────────────────────────────────────
+
+export function msgAttendanceNoShow(
+  studentName: string,
+  courseName: string,
+  sessionDate: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح الحضور" : "Open Attendance")}` : "";
+  return lang === "ar"
+    ? `⚠️ <b>غياب</b>\n\n${escHtml(studentName)}\n\n${escHtml(courseName)}\n${escHtml(sessionDate)}${linkLine}`
+    : `⚠️ <b>No Show</b>\n\n${escHtml(studentName)}\n\n${escHtml(courseName)}\n${escHtml(sessionDate)}${linkLine}`;
+}
+
+// ── Finance ───────────────────────────────────────────────────────────────────
+
+// Outstanding balance — manager/finance view (company-wide summary)
+export function msgBalanceOutstandingManager(
+  pendingCount: number,
+  byCurrency: Array<{ currency: string; total: number }>,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const totals = byCurrency
+    .map((r) => `${r.total.toLocaleString()} ${r.currency}`)
+    .join(", ");
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح الأرصدة المستحقة" : "Open Outstanding Balances")}` : "";
+  return lang === "ar"
+    ? `💰 <b>الأرصدة المستحقة</b>\n\n${pendingCount} تسجيل لا يزال لديهم أرصدة متبقية.\n\nإجمالي المستحق: ${escHtml(totals)}${linkLine}`
+    : `💰 <b>Outstanding Balances</b>\n\n${pendingCount} registration${pendingCount !== 1 ? "s" : ""} have remaining balances.\n\nTotal outstanding: ${escHtml(totals)}${linkLine}`;
+}
+
+// Outstanding balance — Sales Rep view (only their own customers)
+export function msgBalanceOutstandingSales(
+  studentName: string,
+  remaining: string,
+  currency: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح التسجيل" : "Open Registration")}` : "";
+  return lang === "ar"
+    ? `💰 <b>متابعة مالية</b>\n\n${escHtml(studentName)}\n\nالمبلغ المتبقي: ${escHtml(remaining)} ${escHtml(currency)}${linkLine}`
+    : `💰 <b>Payment Follow-up</b>\n\n${escHtml(studentName)}\n\nRemaining: ${escHtml(remaining)} ${escHtml(currency)}${linkLine}`;
+}
+
+// Expense threshold exceeded
+export function msgExpenseThresholdExceeded(
+  title: string,
+  category: string,
+  amount: string,
+  currency: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح المصروف" : "Open Expense")}` : "";
+  return lang === "ar"
+    ? `⚠️ <b>مصروف مرتفع</b>\n\n${escHtml(title)}\n\nالفئة: ${escHtml(category)}\nالمبلغ: ${escHtml(amount)} ${escHtml(currency)}${linkLine}`
+    : `⚠️ <b>High Expense</b>\n\n${escHtml(title)}\n\nCategory: ${escHtml(category)}\nAmount: ${escHtml(amount)} ${escHtml(currency)}${linkLine}`;
+}
+
+// ── Daily Digest (role-aware) ─────────────────────────────────────────────────
+
 export interface DailyDigestStats {
   newLeads: number;
   registrations: number;
@@ -288,31 +584,141 @@ export interface DailyDigestStats {
   pendingPayments: number;
   upcomingSessions: number;
   overdueTasks: number;
+  // Extended fields for role-aware digest
+  unassignedLeads?: number;
+  outstandingAmount?: string;
+  // Sales Rep fields
+  myNewLeads?: number;
+  myFollowUpsToday?: number;
+  myOverdueLeads?: number;
+  myConfirmedRegistrations?: number;
+  myOutstandingCustomers?: number;
+  // Trainer fields
+  mySessionCount?: number;
+  myStudentsExpected?: number;
+  // Finance fields
+  paymentsReceived?: string;
+  pendingConfirmation?: number;
+  totalOutstanding?: string;
+  expenses?: string;
 }
 
+// C5f — Daily digest for Admin/Manager
 export function msgC5fDailyDigest(
   date: string,
   stats: DailyDigestStats,
-  lang: Lang = "en"
+  lang: Lang = "en",
+  deepLinkUrl?: string
 ): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح لوحة التحكم" : "Open Dashboard")}` : "";
   if (lang === "ar") {
     return (
       `📊 <b>ملخص اليوم — ${escHtml(date)}</b>\n\n` +
       `عملاء جدد: ${stats.newLeads}\n` +
-      `تسجيلات: ${stats.registrations}\n` +
-      `الإيرادات: ${escHtml(stats.revenue)}\n` +
-      `مدفوعات معلقة: ${stats.pendingPayments}\n` +
-      `جلسات قادمة: ${stats.upcomingSessions}\n` +
-      `مهام متأخرة: ${stats.overdueTasks}`
+      (stats.unassignedLeads !== undefined ? `غير معيّنين: ${stats.unassignedLeads}\n` : "") +
+      `تسجيلات مؤكدة: ${stats.registrations}\n` +
+      `المدفوعات المستلمة: ${escHtml(stats.revenue)}\n` +
+      (stats.outstandingAmount !== undefined ? `المستحق: ${escHtml(stats.outstandingAmount)}\n` : "") +
+      `دورات قادمة: ${stats.upcomingSessions}\n` +
+      `متابعات متأخرة: ${stats.overdueTasks}` +
+      linkLine
     );
   }
   return (
     `📊 <b>Today's Summary — ${escHtml(date)}</b>\n\n` +
     `New Leads: ${stats.newLeads}\n` +
-    `Registrations: ${stats.registrations}\n` +
-    `Revenue: ${escHtml(stats.revenue)}\n` +
-    `Pending Payments: ${stats.pendingPayments}\n` +
-    `Upcoming Sessions: ${stats.upcomingSessions}\n` +
-    `Overdue Tasks: ${stats.overdueTasks}`
+    (stats.unassignedLeads !== undefined ? `Unassigned: ${stats.unassignedLeads}\n` : "") +
+    `Confirmed Registrations: ${stats.registrations}\n` +
+    `Payments Received: ${escHtml(stats.revenue)}\n` +
+    (stats.outstandingAmount !== undefined ? `Outstanding: ${escHtml(stats.outstandingAmount)}\n` : "") +
+    `Upcoming Course Runs: ${stats.upcomingSessions}\n` +
+    `Overdue Leads: ${stats.overdueTasks}` +
+    linkLine
   );
 }
+
+// Daily digest for Sales Representative (own data only)
+export function msgDailyDigestSales(
+  date: string,
+  stats: DailyDigestStats,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح عملائي" : "Open My Leads")}` : "";
+  if (lang === "ar") {
+    return (
+      `📊 <b>ملخصك اليومي</b>\n\n` +
+      `عملاء جدد معيّنون: ${stats.myNewLeads ?? 0}\n` +
+      `متابعات اليوم: ${stats.myFollowUpsToday ?? 0}\n` +
+      `متأخرون: ${stats.myOverdueLeads ?? 0}\n` +
+      `تسجيلات مؤكدة: ${stats.myConfirmedRegistrations ?? 0}\n` +
+      `عملاء برصيد متبقٍ: ${stats.myOutstandingCustomers ?? 0}` +
+      linkLine
+    );
+  }
+  return (
+    `📊 <b>Your Daily Summary</b>\n\n` +
+    `New Leads Assigned: ${stats.myNewLeads ?? 0}\n` +
+    `Follow-ups Today: ${stats.myFollowUpsToday ?? 0}\n` +
+    `Overdue: ${stats.myOverdueLeads ?? 0}\n` +
+    `Confirmed Registrations: ${stats.myConfirmedRegistrations ?? 0}\n` +
+    `Outstanding Customers: ${stats.myOutstandingCustomers ?? 0}` +
+    linkLine
+  );
+}
+
+// Daily digest for Trainer
+export function msgDailyDigestTrainer(
+  date: string,
+  stats: DailyDigestStats,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح الجدول" : "Open Schedule")}` : "";
+  if (lang === "ar") {
+    return (
+      `📚 <b>جدولك اليوم</b>\n\n` +
+      `الدورات الجارية: ${stats.mySessionCount ?? 0}\n` +
+      `الطلاب المتوقعون: ${stats.myStudentsExpected ?? 0}` +
+      linkLine
+    );
+  }
+  return (
+    `📚 <b>Today's Schedule</b>\n\n` +
+    `Course Runs: ${stats.mySessionCount ?? 0}\n` +
+    `Students Expected: ${stats.myStudentsExpected ?? 0}` +
+    linkLine
+  );
+}
+
+// Daily digest for Finance
+export function msgDailyDigestFinance(
+  date: string,
+  stats: DailyDigestStats,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح المالية" : "Open Finance")}` : "";
+  if (lang === "ar") {
+    return (
+      `💰 <b>ملخص مالي</b>\n\n` +
+      `المدفوعات المستلمة: ${escHtml(stats.paymentsReceived ?? "0")}\n` +
+      `بانتظار التأكيد: ${stats.pendingConfirmation ?? 0}\n` +
+      `إجمالي المستحق: ${escHtml(stats.totalOutstanding ?? "0")}\n` +
+      `المصاريف: ${escHtml(stats.expenses ?? "0")}` +
+      linkLine
+    );
+  }
+  return (
+    `💰 <b>Finance Summary</b>\n\n` +
+    `Payments Received: ${escHtml(stats.paymentsReceived ?? "0")}\n` +
+    `Pending Confirmation: ${stats.pendingConfirmation ?? 0}\n` +
+    `Outstanding: ${escHtml(stats.totalOutstanding ?? "0")}\n` +
+    `Expenses: ${escHtml(stats.expenses ?? "0")}` +
+    linkLine
+  );
+}
+
+// ── Backward compat aliases ───────────────────────────────────────────────────
+// Keep old C5c name for any callers that haven't been updated yet.
+export const msgC5cSessionReminder = msgCourseRunReminder;

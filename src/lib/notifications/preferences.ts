@@ -5,23 +5,55 @@ import { NotificationTypes, type NotificationType } from "./types";
 export type Channel = "telegram" | "inapp";
 
 // Canonical defaults for all notification types on the telegram channel.
-// Preferences are seeded from this map on first settings-page visit.
-// The TelegramProvider falls back to this map when no preference row exists.
+// true = on by default, false = off by default (user must enable).
 export const DEFAULT_PREFERENCES: Record<NotificationType, boolean> = {
+  // Tasks — all on by default
   [NotificationTypes.TASK_ASSIGNED]: true,
   [NotificationTypes.TASK_REMINDER]: true,
   [NotificationTypes.TASK_OVERDUE]: true,
+
+  // Course Runs
+  [NotificationTypes.COURSE_RUN_NEAR_CAPACITY]: true,
+  [NotificationTypes.COURSE_RUN_CAPACITY_REACHED]: true,
+  [NotificationTypes.COURSE_RUN_REMINDER]: true,
+  [NotificationTypes.COURSE_RUN_TODAY]: true,
+  [NotificationTypes.COURSE_RUN_RESCHEDULED]: true,
+  [NotificationTypes.COURSE_RUN_LOCATION_CHANGED]: true,
+  [NotificationTypes.COURSE_RUN_CANCELLED]: true,
+
+  // Payments
+  [NotificationTypes.PAYMENT_PENDING]: true,
+  [NotificationTypes.PAYMENT_RECORDED]: true,
+  [NotificationTypes.PAYMENT_CONFIRMED]: true,
+  [NotificationTypes.PAYMENT_REJECTED]: true,
+  [NotificationTypes.PAYMENT_BALANCE_CLEARED]: true,
+
+  // Leads
+  [NotificationTypes.LEAD_ASSIGNED]: true,
+  [NotificationTypes.LEAD_REASSIGNED]: true,
+  [NotificationTypes.LEAD_UNASSIGNED_ALERT]: true,
+  [NotificationTypes.TEAM_OVERDUE_ALERT]: true,
+
+  // Registrations
+  [NotificationTypes.REGISTRATION_CONFIRMED]: true,
+  [NotificationTypes.REGISTRATION_CANCELLED]: true,
+  [NotificationTypes.REGISTRATION_RUN_CHANGED]: true,
+
+  // Finance
+  [NotificationTypes.BALANCE_OUTSTANDING]: true,
+  [NotificationTypes.EXPENSE_THRESHOLD_EXCEEDED]: true,
+
+  // Attendance
+  [NotificationTypes.ATTENDANCE_NO_SHOW]: true,
+
+  // Digest — off by default (opt-in)
+  [NotificationTypes.DAILY_DIGEST]: false,
+
+  // Deprecated — keep defaults for backward compat
   [NotificationTypes.SESSION_NEAR_CAPACITY]: false,
   [NotificationTypes.SESSION_REMINDER]: true,
   [NotificationTypes.SESSION_TODAY]: true,
   [NotificationTypes.COURSE_UPDATE]: false,
-  [NotificationTypes.PAYMENT_PENDING]: true,
-  [NotificationTypes.PAYMENT_RECORDED]: true,
-  [NotificationTypes.LEAD_ASSIGNED]: true,
-  [NotificationTypes.LEAD_UNASSIGNED_ALERT]: true,
-  [NotificationTypes.TEAM_OVERDUE_ALERT]: true,
-  [NotificationTypes.BALANCE_OUTSTANDING]: true,
-  [NotificationTypes.DAILY_DIGEST]: false,
 };
 
 const ALL_TYPES = Object.values(NotificationTypes) as NotificationType[];
@@ -37,7 +69,7 @@ export async function ensureDefaultPreferences(
       employeeId,
       type,
       channel,
-      enabled: DEFAULT_PREFERENCES[type],
+      enabled: DEFAULT_PREFERENCES[type] ?? false,
     })),
     skipDuplicates: true,
   });

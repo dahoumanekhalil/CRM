@@ -34,6 +34,8 @@ import {
 } from "./command-menu-registry";
 import { searchCommandMenu, type CommandSearchResults } from "./command-menu-search";
 import { useRecentCommands } from "./use-recent-commands";
+import { useT } from "@/lib/i18n/use-t";
+import { useDirection } from "@/lib/use-direction";
 
 interface CommandMenuProps {
   open: boolean;
@@ -47,6 +49,8 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
   const [results, setResults] = React.useState<CommandSearchResults | null>(null);
   const [searching, setSearching] = React.useState(false);
   const { recents, push, clear } = useRecentCommands();
+  const t = useT();
+  const [dir] = useDirection();
 
   const availableCommands = React.useMemo(
     () => filterCommands(userRole as UserRole | undefined),
@@ -142,21 +146,23 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
     <CommandDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Command menu"
-      description="Search or jump to anywhere in Webscale."
+      title={t("Command menu")}
+      description={t("Search or jump to anywhere in Webscale.")}
     >
       <CommandInput
-        placeholder="Type a command or search…"
+        placeholder={t("Type a command or search…")}
         value={query}
         onValueChange={setQuery}
       />
       <CommandList>
         <CommandEmpty>
           {searching
-            ? "Searching…"
+            ? t("Searching…")
             : queryReady
-              ? `No results for "${query.trim()}".`
-              : "No results found."}
+              ? dir === "rtl"
+                ? `لا توجد نتائج لـ "${query.trim()}".`
+                : `No results for "${query.trim()}".`
+              : t("No results found.")}
         </CommandEmpty>
 
         {showRecents && (
@@ -165,7 +171,7 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
               heading={
                 <div className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-1.5">
-                    <Clock className="size-3" /> Recent
+                    <Clock className="size-3" /> {t("Recent")}
                   </span>
                   <button
                     type="button"
@@ -175,7 +181,7 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
                     }}
                     className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 hover:text-foreground"
                   >
-                    Clear
+                    {t("Clear")}
                   </button>
                 </div>
               }
@@ -195,12 +201,12 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
         {hasResults && (
           <>
             {results!.leads.length > 0 && (
-              <CommandGroup heading="Leads">
+              <CommandGroup heading={t("Leads")}>
                 {results!.leads.map((lead) => (
                   <ResultItem
                     key={`lead-${lead.id}`}
                     icon={Contact}
-                    entityType="Lead"
+                    entityType={t("Lead")}
                     label={lead.name}
                     subline={lead.subline}
                     onSelect={() => runNav(`/leads/${lead.id}`)}
@@ -210,12 +216,12 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
               </CommandGroup>
             )}
             {results!.students.length > 0 && (
-              <CommandGroup heading="Students">
+              <CommandGroup heading={t("Students")}>
                 {results!.students.map((student) => (
                   <ResultItem
                     key={`student-${student.id}`}
                     icon={GraduationCap}
-                    entityType="Student"
+                    entityType={t("Student")}
                     label={student.name}
                     subline={student.subline}
                     onSelect={() => runNav(`/students/${student.id}`)}
@@ -225,12 +231,12 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
               </CommandGroup>
             )}
             {results!.courses.length > 0 && (
-              <CommandGroup heading="Courses">
+              <CommandGroup heading={t("Courses")}>
                 {results!.courses.map((course) => (
                   <ResultItem
                     key={`course-${course.id}`}
                     icon={BookOpen}
-                    entityType="Course"
+                    entityType={t("Course")}
                     label={course.name}
                     subline={course.subline}
                     onSelect={() => runNav(`/courses/${course.slug}`)}
@@ -240,12 +246,12 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
               </CommandGroup>
             )}
             {results!.tasks.length > 0 && (
-              <CommandGroup heading="Tasks">
+              <CommandGroup heading={t("Tasks")}>
                 {results!.tasks.map((task) => (
                   <ResultItem
                     key={`task-${task.id}`}
                     icon={CheckSquare}
-                    entityType="Task"
+                    entityType={t("Task")}
                     label={task.title}
                     subline={task.subline}
                     onSelect={() => runNav("/tasks")}
@@ -255,12 +261,12 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
               </CommandGroup>
             )}
             {results!.pages.length > 0 && (
-              <CommandGroup heading="Landing pages">
+              <CommandGroup heading={t("Landing pages")}>
                 {results!.pages.map((page) => (
                   <ResultItem
                     key={`page-${page.id}`}
                     icon={Globe}
-                    entityType="Page"
+                    entityType={t("Page")}
                     label={page.title}
                     subline={page.subline}
                     onSelect={() => runNav(`/landing-pages/${page.id}/edit`)}
@@ -270,12 +276,12 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
               </CommandGroup>
             )}
             {results!.campaigns.length > 0 && (
-              <CommandGroup heading="Campaigns">
+              <CommandGroup heading={t("Campaigns")}>
                 {results!.campaigns.map((campaign) => (
                   <ResultItem
                     key={`campaign-${campaign.id}`}
                     icon={Megaphone}
-                    entityType="Campaign"
+                    entityType={t("Campaign")}
                     label={campaign.name}
                     subline={campaign.subline}
                     onSelect={() => runNav(`/campaigns/${campaign.id}`)}
@@ -285,12 +291,12 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
               </CommandGroup>
             )}
             {results!.payments.length > 0 && (
-              <CommandGroup heading="Payments">
+              <CommandGroup heading={t("Payments")}>
                 {results!.payments.map((payment) => (
                   <ResultItem
                     key={`payment-${payment.id}`}
                     icon={Wallet}
-                    entityType="Payment"
+                    entityType={t("Payment")}
                     label={payment.name}
                     subline={payment.subline}
                     onSelect={() => runNav("/payments")}
@@ -304,7 +310,7 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
         )}
 
         {creates.length > 0 && (
-          <CommandGroup heading="Create">
+          <CommandGroup heading={t("Create")}>
             {creates.map((cmd) => (
               <StaticCommandItem
                 key={cmd.id}
@@ -318,7 +324,7 @@ export function CommandMenu({ open, onOpenChange, userRole }: CommandMenuProps) 
         {gotos.length > 0 && (
           <>
             {creates.length > 0 && <CommandSeparator />}
-            <CommandGroup heading="Go to">
+            <CommandGroup heading={t("Go to")}>
               {gotos.map((cmd) => (
                 <StaticCommandItem
                   key={cmd.id}
@@ -344,6 +350,7 @@ function StaticCommandItem({
   onSelect: () => void;
 }) {
   const Icon = command.icon;
+  const t = useT();
   const keywords = [
     command.label.toLowerCase(),
     command.group,
@@ -355,7 +362,7 @@ function StaticCommandItem({
       onSelect={onSelect}
     >
       <Icon />
-      <span>{command.label}</span>
+      <span>{t(command.label)}</span>
     </CommandItem>
   );
 }
@@ -398,29 +405,30 @@ function ResultItem({
 }
 
 function CommandFooter() {
+  const t = useT();
   return (
     <div className="flex items-center justify-between gap-3 border-t border-border/70 px-3 py-2 text-[11px] text-muted-foreground">
       <div className="flex items-center gap-3">
         <span className="inline-flex items-center gap-1">
           <Kbd>↑</Kbd>
           <Kbd>↓</Kbd>
-          navigate
+          {t("navigate")}
         </span>
         <span className="inline-flex items-center gap-1">
           <Kbd>
             <CornerDownLeft className="size-2.5" />
           </Kbd>
-          select
+          {t("select")}
         </span>
         <span className="inline-flex items-center gap-1">
           <Kbd>esc</Kbd>
-          close
+          {t("close")}
         </span>
       </div>
       <span className="inline-flex items-center gap-1">
         <Kbd>⌘</Kbd>
         <Kbd>K</Kbd>
-        toggle
+        {t("toggle")}
       </span>
     </div>
   );

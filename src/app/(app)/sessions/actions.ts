@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { format } from "date-fns";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
@@ -14,6 +15,8 @@ import {
   type SessionStatus,
   type UpdateSessionInput,
 } from "@/lib/schemas/session";
+import { NotificationService } from "@/lib/notifications/notification-service";
+import { NotificationTypes } from "@/lib/notifications/types";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -21,6 +24,38 @@ async function requireSession() {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
   return session;
+}
+
+// Resolve all stakeholders who need courseRun.* operational alerts.
+async function getCourseRunStakeholders(sessionId: string): Promise<{
+  instructorUserId: string | null;
+  salesOwnerIds: string[];
+  managerIds: string[];
+}> {
+  const [session, regs, managers] = await Promise.all([
+    prisma.courseSession.findUnique({
+      where: { id: sessionId },
+      select: { instructor: { select: { userId: true } } },
+    }),
+    prisma.registration.findMany({
+      where: { sessionId, status: { in: ["PENDING", "CONFIRMED", "ATTENDING"] } },
+      select: { salesOwnerId: true },
+    }),
+    prisma.user.findMany({
+      where: { role: { in: ["ADMIN", "MANAGER"] } },
+      select: { id: true },
+    }),
+  ]);
+
+  const salesOwnerIds = [...new Set(
+    regs.map((r) => r.salesOwnerId).filter(Boolean) as string[]
+  )];
+
+  return {
+    instructorUserId: session?.instructor?.userId ?? null,
+    salesOwnerIds,
+    managerIds: managers.map((m) => m.id),
+  };
 }
 
 // Prisma Decimal doesn't cross the server → client boundary; flatten to number
@@ -98,7 +133,14 @@ export async function updateSession(
 
   const existing = await prisma.courseSession.findUnique({
     where: { id: d.id },
-    select: { id: true, course: { select: { slug: true } } },
+    select: {
+      id: true,
+      startDate: true,
+      endDate: true,
+      location: true,
+      course: { select: { name: true, slug: true } },
+      _count: { select: { registrations: { where: { status: { in: ["PENDING", "CONFIRMED", "ATTENDING"] } } } } },
+    },
   });
   if (!existing) return { ok: false, error: "Session not found." };
 
@@ -127,6 +169,74 @@ export async function updateSession(
     if (updated.course?.slug && updated.course.slug !== existing.course?.slug) {
       revalidatePath(`/courses/${updated.course.slug}`);
     }
+
+    // Detect and fire operational alerts — only when there are active registrations.
+    const affectedCount = existing._count.registrations;
+    const courseName = existing.course?.name ?? "Course";
+    const courseSlug = existing.course?.slug ?? "";
+
+    const dateChanged =
+      d.startDate.getTime() !== existing.startDate.getTime() ||
+      d.endDate.getTime() !== existing.endDate.getTime();
+    const locationChanged =
+      (emptyToNull(d.location) ?? null) !== (existing.location ?? null);
+
+    if ((dateChanged || locationChanged) && affectedCount > 0) {
+      void (async () => {
+        const stakeholders = await getCourseRunStakeholders(d.id);
+        const recipients = new Set([
+          ...stakeholders.managerIds,
+          ...stakeholders.salesOwnerIds,
+          ...(stakeholders.instructorUserId ? [stakeholders.instructorUserId] : []),
+        ]);
+
+        if (dateChanged) {
+          const oldDate = `${format(existing.startDate, "MMM d")} – ${format(existing.endDate, "MMM d, yyyy")}`;
+          const newDate = `${format(d.startDate, "MMM d")} – ${format(d.endDate, "MMM d, yyyy")}`;
+          for (const recipientId of recipients) {
+            NotificationService.send({
+              recipientId,
+              type: NotificationTypes.COURSE_RUN_RESCHEDULED,
+              priority: "CRITICAL",
+              entityType: "Session",
+              entityId: d.id,
+              payload: {
+                title: "Course Run Rescheduled",
+                body: `${courseName} moved from ${oldDate} to ${newDate}`,
+                courseName,
+                courseSlug,
+                oldDate,
+                newDate,
+                affectedCount,
+              },
+            });
+          }
+        }
+
+        if (locationChanged && !dateChanged) {
+          const sessionDate = `${format(existing.startDate, "MMM d")} – ${format(existing.endDate, "MMM d, yyyy")}`;
+          for (const recipientId of recipients) {
+            NotificationService.send({
+              recipientId,
+              type: NotificationTypes.COURSE_RUN_LOCATION_CHANGED,
+              priority: "HIGH",
+              entityType: "Session",
+              entityId: d.id,
+              payload: {
+                title: "Course Run Location Changed",
+                body: `${courseName}: ${existing.location ?? "—"} → ${emptyToNull(d.location) ?? "—"}`,
+                courseName,
+                courseSlug,
+                date: sessionDate,
+                oldLocation: existing.location ?? "—",
+                newLocation: emptyToNull(d.location) ?? "—",
+              },
+            });
+          }
+        }
+      })();
+    }
+
     return { ok: true, data: { id: updated.id } };
   } catch (err) {
     console.error("updateSession failed", err);
@@ -144,7 +254,12 @@ export async function setSessionStatus(
   await requirePermissionAction("sessions.write");
   const existing = await prisma.courseSession.findUnique({
     where: { id },
-    select: { course: { select: { slug: true } } },
+    select: {
+      startDate: true,
+      endDate: true,
+      course: { select: { name: true, slug: true } },
+      _count: { select: { registrations: { where: { status: { in: ["PENDING", "CONFIRMED", "ATTENDING"] } } } } },
+    },
   });
   await prisma.courseSession.update({
     where: { id },
@@ -153,6 +268,40 @@ export async function setSessionStatus(
   });
   revalidatePath("/sessions");
   if (existing?.course?.slug) revalidatePath(`/courses/${existing.course.slug}`);
+
+  if (status === "CANCELLED" && existing) {
+    const affectedCount = existing._count.registrations;
+    const courseName = existing.course?.name ?? "Course";
+    const courseSlug = existing.course?.slug ?? "";
+    const sessionDate = `${format(existing.startDate, "MMM d")} – ${format(existing.endDate, "MMM d, yyyy")}`;
+
+    void (async () => {
+      const stakeholders = await getCourseRunStakeholders(id);
+      const recipients = new Set([
+        ...stakeholders.managerIds,
+        ...stakeholders.salesOwnerIds,
+        ...(stakeholders.instructorUserId ? [stakeholders.instructorUserId] : []),
+      ]);
+      for (const recipientId of recipients) {
+        NotificationService.send({
+          recipientId,
+          type: NotificationTypes.COURSE_RUN_CANCELLED,
+          priority: "CRITICAL",
+          entityType: "Session",
+          entityId: id,
+          payload: {
+            title: "Course Run Cancelled",
+            body: `${courseName} — ${affectedCount} registrations affected`,
+            courseName,
+            courseSlug,
+            date: sessionDate,
+            affectedCount,
+          },
+        });
+      }
+    })();
+  }
+
   return { ok: true, data: { id } };
 }
 
