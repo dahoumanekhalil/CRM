@@ -61,9 +61,9 @@ export function LeadsToolbar({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 items-center gap-2 sm:max-w-xl">
+        <div className="flex flex-col gap-2 sm:flex-1 sm:flex-row sm:items-center sm:max-w-xl">
           <SearchInput
-            containerClassName="flex-1"
+            containerClassName="w-full sm:flex-1"
             value={filters.q}
             onChange={(v) => setFilters({ q: v, page: 1 })}
             placeholder={t("Search leads by name, email, phone…")}
@@ -74,7 +74,7 @@ export function LeadsToolbar({
               setFilters({ courseId: v === "__all" ? "" : v, page: 1 })
             }
           >
-            <SelectTrigger size="sm" className="h-9 w-[180px] shrink-0">
+            <SelectTrigger size="sm" className="h-9 w-full sm:w-[180px] sm:shrink-0">
               <SelectValue placeholder="Course" />
             </SelectTrigger>
             <SelectContent>
@@ -87,7 +87,7 @@ export function LeadsToolbar({
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {hasActiveFilters ? (
             <Button
               variant="ghost"

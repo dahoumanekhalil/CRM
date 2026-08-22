@@ -82,7 +82,7 @@ export function DataTablePagination({
           <Button
             variant="outline"
             size="icon"
-            className="size-8"
+            className="hidden size-8 sm:flex"
             onClick={() => onPageChange(1)}
             disabled={!canPrev}
             aria-label="First page"
@@ -112,7 +112,7 @@ export function DataTablePagination({
           <Button
             variant="outline"
             size="icon"
-            className="size-8"
+            className="hidden size-8 sm:flex"
             onClick={() => onPageChange(totalPages)}
             disabled={!canNext}
             aria-label="Last page"

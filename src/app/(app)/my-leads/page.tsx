@@ -48,7 +48,7 @@ export default async function MyLeadsPage({
           title="My Leads"
           description={`${total} lead${total !== 1 ? "s" : ""} assigned to you`}
         />
-        <div className="flex-1 space-y-4 p-6">
+        <div className="flex-1 space-y-4 p-4 sm:p-6">
           <LeadsClient
             rows={rows}
             total={total}
@@ -71,7 +71,7 @@ export default async function MyLeadsPage({
         title="My Leads"
         description={`${workspace.totalActive} active lead${workspace.totalActive !== 1 ? "s" : ""}`}
       />
-      <div className="flex-1 p-6 max-w-2xl">
+      <div className="flex-1 p-4 sm:p-6 max-w-2xl">
         <MyLeadsWorkspace workspace={workspace} />
       </div>
     </>

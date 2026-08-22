@@ -260,7 +260,7 @@ export function LeadsTable({
               <a
                 href={`mailto:${row.original.email}`}
                 onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <Mail className="size-3" />
                 <span className="truncate max-w-[140px]">{row.original.email}</span>
@@ -274,11 +274,13 @@ export function LeadsTable({
       },
       {
         id: "source",
+        meta: { className: "hidden lg:table-cell" },
         header: () => t("Source"),
         cell: ({ row }) => <SourceCell source={(row.original as Record<string, unknown>).source as string | null} />,
       },
       {
         id: "lastNote",
+        meta: { className: "hidden lg:table-cell" },
         header: () => t("Last note"),
         cell: ({ row }) => (
           <NoteCell leadId={row.original.id} body={row.original.communications?.[0]?.body} />
@@ -286,6 +288,7 @@ export function LeadsTable({
       },
       {
         id: "callTime",
+        meta: { className: "hidden xl:table-cell" },
         header: () => (
           <span className="flex items-center gap-1.5 whitespace-nowrap">
             <AlarmClock className="size-3.5" />
