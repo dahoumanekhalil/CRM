@@ -43,6 +43,16 @@ export const NotificationTypes = {
   // ── Digest & misc ─────────────────────────────────────────────────────────
   DAILY_DIGEST: "daily.digest",
 
+  // ── Commissions ───────────────────────────────────────────────────────────
+  COMMISSION_EARNED: "commission.earned",
+  COMMISSION_ADJUSTED: "commission.adjusted",
+  COMMISSION_PAYOUT_PROCESSED: "commission.payoutProcessed",
+
+  // ── Refunds ───────────────────────────────────────────────────────────────
+  REFUND_REQUESTED: "refund.requested",
+  REFUND_APPROVED: "refund.approved",
+  REFUND_REJECTED: "refund.rejected",
+
   // ── Deprecated — kept for backward compatibility only ────────────────────
   SESSION_NEAR_CAPACITY: "session.nearCapacity",
   SESSION_REMINDER: "session.reminder",

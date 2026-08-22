@@ -8,6 +8,7 @@ import { requirePermissionAction } from "@/lib/auth-guards";
 import { NotificationService } from "@/lib/notifications/notification-service";
 import { NotificationTypes } from "@/lib/notifications/types";
 import { recordActivity } from "@/lib/activity";
+import { evaluateCommission } from "@/lib/commissions/engine";
 import {
   createPaymentSchema,
   listPaymentsSchema,
@@ -89,6 +90,11 @@ export async function createPayment(
         },
       },
     });
+
+    // Trigger commission evaluation for completed payments with a registration.
+    if (d.status === "COMPLETED" && d.registrationId) {
+      void evaluateCommission(d.registrationId, session.user.id);
+    }
 
     // Fire payment notifications — never blocks the business transaction.
     void (async () => {
@@ -383,6 +389,11 @@ export async function setPaymentStatus(
   revalidatePath(`/students/${existing.studentId}`);
   const slug = existing.registration?.session?.course?.slug ?? null;
   if (slug) revalidatePath(`/courses/${slug}`);
+
+  // Trigger commission evaluation when a payment is confirmed.
+  if (status === "COMPLETED" && existing.registration?.id) {
+    void evaluateCommission(existing.registration.id, authSession.user.id);
+  }
 
   // Fire payment.confirmed / payment.rejected notifications.
   if (status === "COMPLETED" || status === "FAILED") {
@@ -938,6 +949,8 @@ export async function createPaymentForRegistration(
       },
       select: { id: true },
     });
+
+    void evaluateCommission(registrationId, authSession.user.id);
 
     void recordActivity({
       type: "payment.recorded",

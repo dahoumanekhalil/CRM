@@ -18,6 +18,9 @@ import {
   TrendingUp,
   Target,
   ShoppingBag,
+  BadgeDollarSign,
+  DollarSign,
+  RotateCcw,
   type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/lib/permissions";
@@ -166,6 +169,43 @@ export const navGroups: NavGroup[] = [
         permission: "payments.view",
         built: true,
       },
+      {
+        label: "Refunds",
+        href: "/refunds",
+        icon: RotateCcw,
+        matchPrefix: true,
+        permission: "refunds.approve",
+        built: true,
+      },
+      {
+        label: "Commission Payouts",
+        href: "/finance/payouts",
+        icon: DollarSign,
+        matchPrefix: true,
+        permission: "commissions.payout",
+        built: true,
+      },
+    ],
+  },
+  {
+    label: "Commissions",
+    items: [
+      {
+        label: "My Commissions",
+        href: "/my-commissions",
+        icon: BadgeDollarSign,
+        matchPrefix: true,
+        permission: "commissions.view.own",
+        built: true,
+      },
+      {
+        label: "Team Commissions",
+        href: "/commissions/manage",
+        icon: TrendingUp,
+        matchPrefix: true,
+        permission: "commissions.view.team",
+        built: true,
+      },
     ],
   },
   {
@@ -218,6 +258,14 @@ export const navGroups: NavGroup[] = [
         icon: Settings,
         matchPrefix: false,
         permission: "settings.view",
+        built: true,
+      },
+      {
+        label: "Commission Rules",
+        href: "/settings/commissions",
+        icon: BadgeDollarSign,
+        matchPrefix: true,
+        permission: "settings.write",
         built: true,
       },
       {

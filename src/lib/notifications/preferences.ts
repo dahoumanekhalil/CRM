@@ -49,6 +49,14 @@ export const DEFAULT_PREFERENCES: Record<NotificationType, boolean> = {
   // Digest — off by default (opt-in)
   [NotificationTypes.DAILY_DIGEST]: false,
 
+  // Commissions & Refunds
+  [NotificationTypes.COMMISSION_EARNED]: true,
+  [NotificationTypes.COMMISSION_ADJUSTED]: true,
+  [NotificationTypes.COMMISSION_PAYOUT_PROCESSED]: true,
+  [NotificationTypes.REFUND_REQUESTED]: true,
+  [NotificationTypes.REFUND_APPROVED]: true,
+  [NotificationTypes.REFUND_REJECTED]: true,
+
   // Deprecated — keep defaults for backward compat
   [NotificationTypes.SESSION_NEAR_CAPACITY]: false,
   [NotificationTypes.SESSION_REMINDER]: true,

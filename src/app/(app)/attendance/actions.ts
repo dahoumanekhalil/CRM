@@ -8,6 +8,7 @@ import { auth } from "@/auth";
 import { requirePermissionAction } from "@/lib/auth-guards";
 import { NotificationService } from "@/lib/notifications/notification-service";
 import { NotificationTypes } from "@/lib/notifications/types";
+import { evaluateCommission } from "@/lib/commissions/engine";
 import {
   listAttendanceSchema,
   recordAttendanceSchema,
@@ -166,6 +167,14 @@ export async function recordAttendance(
     );
 
     await bumpSessionStatus(d.sessionId, sessionDate);
+
+    // Trigger commission evaluation for each student marked PRESENT.
+    const presentIds = d.entries
+      .filter((e) => e.status === "PRESENT")
+      .map((e) => e.registrationId);
+    for (const regId of presentIds) {
+      void evaluateCommission(regId, session.user.id);
+    }
 
     revalidatePath("/attendance");
     revalidatePath("/sessions");

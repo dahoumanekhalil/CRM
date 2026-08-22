@@ -107,6 +107,18 @@ export const PERMISSIONS = {
   // Settings — Admin only.
   "settings.view": ["ADMIN"] as const,
   "settings.write": ["ADMIN"] as const,
+
+  // Commission system
+  // commissions.view.own — sales agents see only their own commissions
+  "commissions.view.own": ["ADMIN", "MANAGER", "SALES", "FINANCE", "EMPLOYEE"] as const,
+  // commissions.view.team — managers/finance see all agents
+  "commissions.view.team": ["ADMIN", "MANAGER", "FINANCE"] as const,
+  // commissions.write — manual adjustments, void, rule management
+  "commissions.write": ["ADMIN", "MANAGER"] as const,
+  // commissions.payout — record and approve payouts
+  "commissions.payout": ["ADMIN", "FINANCE"] as const,
+  // refunds.approve — approve or reject refund requests
+  "refunds.approve": ["ADMIN", "MANAGER", "FINANCE"] as const,
 } as const satisfies Record<string, readonly UserRole[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

@@ -79,6 +79,10 @@ const PREF_LABELS_EN: Record<string, string> = {
   "expense.thresholdExceeded": "High expense alert",
   "attendance.noShow": "No show alerts",
   "daily.digest": "Daily digest",
+  "commission.earned": "Commission earned",
+  "commission.adjusted": "Commission adjusted",
+  "commission.payoutProcessed": "Commission payout",
+  "refund.requested": "Refund request notifications",
 };
 
 const PREF_LABELS_AR: Record<string, string> = {
@@ -108,6 +112,10 @@ const PREF_LABELS_AR: Record<string, string> = {
   "expense.thresholdExceeded": "تنبيه مصروف مرتفع",
   "attendance.noShow": "تنبيهات الغياب",
   "daily.digest": "الملخص اليومي",
+  "commission.earned": "إشعار احتساب العمولة",
+  "commission.adjusted": "إشعار تعديل العمولة",
+  "commission.payoutProcessed": "إشعار تسديد المستحقات",
+  "refund.requested": "طلبات الاسترجاع",
 };
 
 export function msgNotificationPrefs(
@@ -717,6 +725,66 @@ export function msgDailyDigestFinance(
     `Expenses: ${escHtml(stats.expenses ?? "0")}` +
     linkLine
   );
+}
+
+// ── Commissions ───────────────────────────────────────────────────────────────
+
+export function msgCommissionEarned(
+  courseName: string,
+  studentName: string,
+  amount: string,
+  currency: string,
+  outstanding: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح عمولاتي" : "My Commissions")}` : "";
+  return lang === "ar"
+    ? `🎉 <b>تم احتساب عمولة جديدة</b>\n\nالدورة: ${escHtml(courseName)}\nالطالب: ${escHtml(studentName)}\nالعمولة: ${escHtml(amount)} ${escHtml(currency)}\n\nمستحقاتك الحالية:\n<b>${escHtml(outstanding)} ${escHtml(currency)}</b>${linkLine}`
+    : `🎉 <b>Commission Earned</b>\n\nCourse: ${escHtml(courseName)}\nStudent: ${escHtml(studentName)}\nCommission: ${escHtml(amount)} ${escHtml(currency)}\n\nCurrent Outstanding:\n<b>${escHtml(outstanding)} ${escHtml(currency)}</b>${linkLine}`;
+}
+
+export function msgCommissionAdjusted(
+  courseName: string,
+  reason: string,
+  adjustment: string,
+  currency: string,
+  outstanding: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح عمولاتي" : "My Commissions")}` : "";
+  return lang === "ar"
+    ? `⚠️ <b>تم تعديل إحدى عمولاتك</b>\n\nالدورة: ${escHtml(courseName)}\nالسبب: ${escHtml(reason)}\nالتعديل: <b>-${escHtml(adjustment)} ${escHtml(currency)}</b>\n\nمستحقاتك الحالية:\n<b>${escHtml(outstanding)} ${escHtml(currency)}</b>${linkLine}`
+    : `⚠️ <b>Commission Adjusted</b>\n\nCourse: ${escHtml(courseName)}\nReason: ${escHtml(reason)}\nAdjustment: <b>-${escHtml(adjustment)} ${escHtml(currency)}</b>\n\nCurrent Outstanding:\n<b>${escHtml(outstanding)} ${escHtml(currency)}</b>${linkLine}`;
+}
+
+export function msgCommissionPayoutProcessed(
+  amount: string,
+  currency: string,
+  remaining: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح عمولاتي" : "My Commissions")}` : "";
+  return lang === "ar"
+    ? `✅ <b>تم تسديد مستحقاتك</b>\n\nالمبلغ المدفوع: <b>${escHtml(amount)} ${escHtml(currency)}</b>\nالمتبقي: ${escHtml(remaining)} ${escHtml(currency)}${linkLine}`
+    : `✅ <b>Commission Payout Processed</b>\n\nAmount Paid: <b>${escHtml(amount)} ${escHtml(currency)}</b>\nRemaining: ${escHtml(remaining)} ${escHtml(currency)}${linkLine}`;
+}
+
+export function msgRefundRequested(
+  studentName: string,
+  courseName: string,
+  amount: string,
+  currency: string,
+  reason: string,
+  deepLinkUrl: string,
+  lang: Lang = "en"
+): string {
+  const linkLine = deepLinkUrl ? `\n${link(deepLinkUrl, lang === "ar" ? "فتح طلب الاسترجاع" : "Review Refund")}` : "";
+  return lang === "ar"
+    ? `💰 <b>طلب استرجاع جديد</b>\n\nالطالب: ${escHtml(studentName)}\nالدورة: ${escHtml(courseName)}\nالمبلغ: ${escHtml(amount)} ${escHtml(currency)}\nالسبب: ${escHtml(reason)}${linkLine}`
+    : `💰 <b>Refund Request</b>\n\nStudent: ${escHtml(studentName)}\nCourse: ${escHtml(courseName)}\nAmount: ${escHtml(amount)} ${escHtml(currency)}\nReason: ${escHtml(reason)}${linkLine}`;
 }
 
 // ── Backward compat aliases ───────────────────────────────────────────────────
