@@ -17,11 +17,9 @@ export default function SignUpPage() {
   return (
     <Card className="shadow-lg">
       <CardHeader className="text-center">
-        <Link
-          href="/"
-          className="mx-auto mb-2 flex size-10 items-center justify-center rounded-md bg-primary font-bold text-primary-foreground"
-        >
-          W
+        <Link href="/" className="mx-auto mb-2 block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.webp" alt="Webscale" className="h-10 w-auto" />
         </Link>
         <div className="mx-auto grid size-12 place-items-center rounded-full bg-muted/50 text-muted-foreground">
           <Lock className="size-5" />

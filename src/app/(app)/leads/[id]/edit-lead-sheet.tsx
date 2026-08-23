@@ -61,7 +61,8 @@ function toDefaults(lead: LeadDetail): FormInput {
     email: lead.email ?? "",
     phone: lead.phone ?? "",
     preferredCallTime: (lead as Record<string, unknown>).preferredCallTime as string ?? "",
-    status: lead.status,
+    // FOLLOW_UP is a legacy status — coerce to INTERESTED for the form picker.
+    status: lead.status === "FOLLOW_UP" ? "INTERESTED" : lead.status,
     source: lead.source ?? "",
     notes: lead.notes ?? "",
     tags: lead.tags,

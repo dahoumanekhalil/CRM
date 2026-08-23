@@ -21,6 +21,7 @@ import {
   BadgeDollarSign,
   DollarSign,
   RotateCcw,
+  Video,
   type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/lib/permissions";
@@ -274,6 +275,19 @@ export const navGroups: NavGroup[] = [
         icon: Bot,
         matchPrefix: true,
         permission: "telegram.admin",
+        built: true,
+      },
+    ],
+  },
+  // ── Phase 1 POC — remove or promote to real route in Phase 2 ──────────────
+  {
+    label: "Lab",
+    items: [
+      {
+        label: "Live Test",
+        href: "/live-test",
+        icon: Video,
+        matchPrefix: true,
         built: true,
       },
     ],

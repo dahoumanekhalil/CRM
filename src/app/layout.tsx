@@ -29,6 +29,11 @@ export const metadata: Metadata = {
   },
   description:
     "Webscale — the operating system for training and education companies.",
+  icons: {
+    icon: "/logo.webp",
+    shortcut: "/logo.webp",
+    apple: "/logo.webp",
+  },
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {

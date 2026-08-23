@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Command } from "lucide-react";
 
@@ -64,9 +65,14 @@ export function AppSidebar({
           href="/dashboard"
           className="flex items-center gap-2.5 px-2 py-1.5"
         >
-          <div className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground shadow-sm">
-            <span className="text-sm font-bold">W</span>
-          </div>
+          <Image
+            src="/logo.webp"
+            alt="Webscale"
+            width={1536}
+            height={1024}
+            className="h-8 w-auto shrink-0"
+            priority
+          />
           <div
             className={cn(
               "min-w-0 transition-opacity",

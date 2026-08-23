@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { FileQuestion } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -6,11 +7,15 @@ export default function NotFound() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-6">
       <div className="max-w-md space-y-6 text-center">
-        <Link
-          href="/dashboard"
-          className="mx-auto flex size-12 items-center justify-center rounded-xl bg-primary font-bold text-xl text-primary-foreground shadow-sm"
-        >
-          W
+        <Link href="/dashboard" className="mx-auto block">
+          <Image
+            src="/logo.webp"
+            alt="Webscale"
+            width={1536}
+            height={1024}
+            className="h-12 w-auto"
+            priority
+          />
         </Link>
         <div className="space-y-2">
           <div className="mx-auto grid size-14 place-items-center rounded-full border border-border/70 bg-muted/50 text-muted-foreground">

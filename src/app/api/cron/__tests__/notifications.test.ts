@@ -195,7 +195,7 @@ describe("24.3 — Notification delivery lifecycle", () => {
     expect(body.queue.retrying).toBe(1);
     // Should reschedule (update with future scheduledAt), not mark FAILED
     const updateCall = mockPrisma.scheduledNotification.update.mock.calls.find(
-      ([args]: [{ data: { status: string } }]) => args.data?.status === "PENDING",
+      ([args]) => (args as { data?: { status?: string } }).data?.status === "PENDING",
     );
     expect(updateCall).toBeDefined();
   });

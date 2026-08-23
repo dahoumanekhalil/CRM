@@ -17,5 +17,22 @@ services:
       timeout: 5s
       retries: 10
 
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: webscale_livekit
+    # --node-ip tells LiveKit which IP to advertise in ICE candidates.
+    # Without it the container's internal Docker IP (172.x.x.x) is used,
+    # which the browser cannot reach → "could not establish pc connection".
+    # 127.0.0.1 works when host and guest are on the same machine.
+    # For a different device on the same Wi-Fi, change to your LAN IP.
+    command: --config /etc/livekit/livekit.yml --node-ip 127.0.0.1
+    volumes:
+      - ./livekit.yml:/etc/livekit/livekit.yml:ro
+    ports:
+      - "7880:7880"       # WebSocket API + HTTP
+      - "7881:7881"       # RTC over TCP (fallback)
+      - "7882:7882/udp"   # RTC over UDP (primary media)
+    restart: unless-stopped
+
 volumes:
   postgres_data:

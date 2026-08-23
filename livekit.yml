@@ -1,0 +1,18 @@
+# LiveKit development config for Docker on Windows/Mac.
+# node_ip is passed as a CLI flag (--node-ip) since it is a top-level server
+# option, not an rtc sub-option.  This file only sets keys and rtc ports.
+
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 7882
+  port_range_end: 7882
+  use_external_ip: false
+
+keys:
+  devkey: secret
+
+logging:
+  level: info
+  pion_level: error
