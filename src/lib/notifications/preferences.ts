@@ -57,6 +57,14 @@ export const DEFAULT_PREFERENCES: Record<NotificationType, boolean> = {
   [NotificationTypes.REFUND_APPROVED]: true,
   [NotificationTypes.REFUND_REJECTED]: true,
 
+  // Live Classroom
+  [NotificationTypes.LIVE_SESSION_REMINDER]: true,
+  [NotificationTypes.LIVE_SESSION_STARTED]: true,
+  [NotificationTypes.LIVE_SESSION_STUDENT_JOIN]: true,
+  [NotificationTypes.LIVE_SESSION_RECORDING_READY]: true,
+  [NotificationTypes.LIVE_SESSION_STUDENT_REMINDER]: true,
+  [NotificationTypes.LIVE_SESSION_STUDENT_RECORDING_READY]: true,
+
   // Deprecated — keep defaults for backward compat
   [NotificationTypes.SESSION_NEAR_CAPACITY]: false,
   [NotificationTypes.SESSION_REMINDER]: true,

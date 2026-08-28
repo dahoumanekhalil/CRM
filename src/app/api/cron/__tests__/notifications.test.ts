@@ -42,6 +42,8 @@ const mockPrisma = vi.hoisted(() => ({
   lead: { count: vi.fn(), groupBy: vi.fn() },
   registration: { count: vi.fn() },
   user: { findUnique: vi.fn(), findMany: vi.fn() },
+  liveSession: { findMany: vi.fn(), updateMany: vi.fn() },
+  expense: { aggregate: vi.fn() },
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
@@ -113,6 +115,9 @@ beforeEach(() => {
   mockPrisma.registration.count.mockResolvedValue(0);
   mockPrisma.user.findMany.mockResolvedValue([]);
   mockPrisma.user.findUnique.mockResolvedValue({ id: "user-1", role: "ADMIN" });
+  mockPrisma.liveSession.findMany.mockResolvedValue([]);
+  mockPrisma.liveSession.updateMany.mockResolvedValue({ count: 0 });
+  mockPrisma.expense.aggregate.mockResolvedValue({ _sum: { amount: null } });
 });
 
 // ── 24.5 — Cron security ─────────────────────────────────────────────────────

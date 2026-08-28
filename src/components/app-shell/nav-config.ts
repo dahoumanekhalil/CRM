@@ -141,6 +141,14 @@ export const navGroups: NavGroup[] = [
         permission: "attendance.view",
         built: true,
       },
+      {
+        label: "Live Sessions",
+        href: "/live-sessions",
+        icon: Video,
+        matchPrefix: true,
+        permission: "live.view",
+        built: true,
+      },
     ],
   },
   {

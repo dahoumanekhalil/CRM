@@ -9,6 +9,7 @@ import { NotificationTypes } from "@/lib/notifications/types";
 import type { NotificationIntent, NotificationType } from "@/lib/notifications/types";
 import { hasPermission, type Permission } from "@/lib/permissions";
 import { getOrgTimezone } from "@/lib/org";
+import { enqueueNotification } from "@/lib/notifications/enqueue";
 
 // ── Permission map ─────────────────────────────────────────────────────────────
 // Maps each notification type to the permission the recipient must still hold
@@ -41,6 +42,9 @@ const NOTIF_PERMISSION_MAP: Partial<Record<string, Permission>> = {
   "registration.runChanged":   "students.view",
   "attendance.noShow":         "students.view",
   "course.update":             "courses.view",
+  "liveSession.reminder":      "live.host",
+  "liveSession.started":       "live.host",
+  "liveSession.recordingReady":"live.host",
 };
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -52,57 +56,9 @@ function authorized(req: NextRequest): boolean {
 }
 
 // ── Enqueue helper ─────────────────────────────────────────────────────────────
+// Thin alias so all discoverers in this file keep calling `enqueue(...)` unchanged.
 
-async function enqueue(
-  type: string,
-  recipientId: string,
-  payload: Record<string, unknown>,
-  opts: {
-    entityType?: string;
-    entityId?: string;
-    provider?: string;
-    scheduledAt?: Date;
-    dedupWindowHours?: number;
-  } = {},
-): Promise<boolean> {
-  const { entityId, entityType, provider = "all", scheduledAt, dedupWindowHours = 23 } = opts;
-
-  if (entityId) {
-    const since = subHours(new Date(), dedupWindowHours);
-    const dup = await prisma.scheduledNotification.findFirst({
-      where: {
-        recipientId,
-        type,
-        entityId,
-        status: { in: ["PENDING", "PROCESSING", "SENT"] },
-        createdAt: { gte: since },
-      },
-      select: { id: true },
-    });
-    if (dup) return false;
-  }
-
-  const burstCount = await prisma.scheduledNotification.count({
-    where: { recipientId, createdAt: { gte: subMinutes(new Date(), 5) } },
-  });
-  if (burstCount >= 20) {
-    console.warn(`[enqueue] burst protection triggered for recipient ${recipientId}`);
-    return false;
-  }
-
-  await prisma.scheduledNotification.create({
-    data: {
-      type,
-      recipientId,
-      payload: payload as Prisma.InputJsonValue,
-      scheduledAt: scheduledAt ?? new Date(),
-      entityType: entityType ?? null,
-      entityId: entityId ?? null,
-      provider,
-    },
-  });
-  return true;
-}
+const enqueue = enqueueNotification;
 
 // ── Discoverers ───────────────────────────────────────────────────────────────
 
@@ -638,6 +594,195 @@ async function processOne(
   }
 }
 
+// ── Phase 31: Student notification helpers ────────────────────────────────────
+
+// Maps enrolled student emails for a courseSession to CRM User IDs (best-effort).
+// Students who don't have a CRM account get no notification — that's expected.
+async function enrolledStudentUserIds(courseSessionId: string): Promise<string[]> {
+  const registrations = await prisma.registration.findMany({
+    where: { sessionId: courseSessionId, status: { in: ["CONFIRMED", "ATTENDING", "COMPLETED"] } },
+    select: { student: { select: { email: true } } },
+  });
+  const emails = registrations.map((r) => r.student.email).filter((e): e is string => !!e);
+  if (!emails.length) return [];
+  const users = await prisma.user.findMany({
+    where: { email: { in: emails } },
+    select: { id: true },
+  });
+  return users.map((u) => u.id);
+}
+
+// ── Phase 16: Live Session discoverers ────────────────────────────────────────
+
+async function discoverLiveSessionReminders(): Promise<number> {
+  const now = new Date();
+  // Two windows per cron tick: 30-min and 10-min before scheduledAt.
+  const windows = [
+    { minutesBefore: 30, lo: 25, hi: 35 },
+    { minutesBefore: 10, lo: 5, hi: 15 },
+  ];
+
+  let enqueued = 0;
+  for (const { minutesBefore, lo, hi } of windows) {
+    const sessions = await prisma.liveSession.findMany({
+      where: {
+        scheduledAt: { gte: addMinutes(now, lo), lte: addMinutes(now, hi) },
+        status: { in: ["SCHEDULED", "WAITING"] },
+        hostId: { not: null },
+      },
+      select: {
+        id: true,
+        hostId: true,
+        courseSessionId: true,
+        courseSession: {
+          select: {
+            course: { select: { name: true, slug: true } },
+          },
+        },
+      },
+    });
+
+    for (const ls of sessions) {
+      // Host reminder.
+      if (ls.hostId) {
+        const ok = await enqueue(
+          NotificationTypes.LIVE_SESSION_REMINDER,
+          ls.hostId,
+          {
+            title: `Live session starting in ${minutesBefore} min`,
+            body: ls.courseSession.course.name,
+            courseName: ls.courseSession.course.name,
+            courseSlug: ls.courseSession.course.slug,
+            courseSessionId: ls.courseSessionId,
+            minutesBefore,
+          },
+          { entityType: "LiveSession", entityId: `${minutesBefore}:${ls.id}`, dedupWindowHours: 1 },
+        );
+        if (ok) enqueued++;
+      }
+
+      // 31.2 — Student reminders: enrolled students who also have CRM accounts.
+      const studentIds = await enrolledStudentUserIds(ls.courseSessionId);
+      for (const userId of studentIds) {
+        if (userId === ls.hostId) continue; // don't double-notify the host
+        const ok = await enqueue(
+          NotificationTypes.LIVE_SESSION_STUDENT_REMINDER,
+          userId,
+          {
+            title: `Your live class starts in ${minutesBefore} minutes`,
+            body: ls.courseSession.course.name,
+            courseName: ls.courseSession.course.name,
+            courseSlug: ls.courseSession.course.slug,
+            courseSessionId: ls.courseSessionId,
+            minutesBefore,
+          },
+          { entityType: "LiveSession", entityId: `student:${minutesBefore}:${ls.id}:${userId}`, dedupWindowHours: 1 },
+        );
+        if (ok) enqueued++;
+      }
+    }
+  }
+  return enqueued;
+}
+
+async function discoverLiveSessionRecordingReady(): Promise<number> {
+  // LiveSessions that completed (recording stored) but notification not yet sent.
+  // We use entityId dedup so each session is notified exactly once.
+  const sessions = await prisma.liveSession.findMany({
+    where: {
+      status: "COMPLETED",
+      recordingUrl: { not: null },
+      hostId: { not: null },
+    },
+    select: {
+      id: true,
+      hostId: true,
+      courseSessionId: true,
+      courseSession: {
+        select: {
+          course: { select: { name: true, slug: true } },
+        },
+      },
+    },
+  });
+
+  let enqueued = 0;
+  for (const ls of sessions) {
+    // Host notification.
+    if (ls.hostId) {
+      const ok = await enqueue(
+        NotificationTypes.LIVE_SESSION_RECORDING_READY,
+        ls.hostId,
+        {
+          title: "Recording is ready",
+          body: ls.courseSession.course.name,
+          courseName: ls.courseSession.course.name,
+          courseSlug: ls.courseSession.course.slug,
+          courseSessionId: ls.courseSessionId,
+        },
+        { entityType: "LiveSession", entityId: ls.id, dedupWindowHours: 0 },
+      );
+      if (ok) enqueued++;
+    }
+
+    // 31.3 — Student recording-ready: enrolled students who also have CRM accounts.
+    const studentIds = await enrolledStudentUserIds(ls.courseSessionId);
+    for (const userId of studentIds) {
+      if (userId === ls.hostId) continue;
+      const ok = await enqueue(
+        NotificationTypes.LIVE_SESSION_STUDENT_RECORDING_READY,
+        userId,
+        {
+          title: "Your class recording is ready",
+          body: ls.courseSession.course.name,
+          courseName: ls.courseSession.course.name,
+          courseSlug: ls.courseSession.course.slug,
+          courseSessionId: ls.courseSessionId,
+        },
+        { entityType: "LiveSession", entityId: `studentRec:${ls.id}:${userId}`, dedupWindowHours: 0 },
+      );
+      if (ok) enqueued++;
+    }
+  }
+  return enqueued;
+}
+
+// ── 20.5 Orphaned-session reconciliation ──────────────────────────────────────
+// Detects LiveSessions that are stuck due to missed webhook events and advances
+// them to a terminal state so they don't block future sessions.
+
+async function reconcileOrphanedLiveSessions(): Promise<{ ended: number; completed: number }> {
+  const now = new Date();
+
+  // Sessions stuck in LIVE/WAITING for more than 10 hours — room_finished missed.
+  const staleLive = await prisma.liveSession.updateMany({
+    where: {
+      status: { in: ["LIVE", "WAITING"] },
+      startedAt: { lt: new Date(now.getTime() - 10 * 3_600_000) },
+    },
+    data: { status: "ENDED", endedAt: now },
+  });
+
+  // Sessions stuck in RECORDING_PROCESSING for more than 3 hours — egress_ended missed.
+  // Advance to COMPLETED without a recording URL so the session is no longer blocking.
+  const staleRecording = await prisma.liveSession.updateMany({
+    where: {
+      status: "RECORDING_PROCESSING",
+      updatedAt: { lt: new Date(now.getTime() - 3 * 3_600_000) },
+    },
+    data: { status: "COMPLETED" },
+  });
+
+  if (staleLive.count > 0) {
+    console.warn(`[cron] reconciled ${staleLive.count} orphaned LIVE session(s) → ENDED`);
+  }
+  if (staleRecording.count > 0) {
+    console.warn(`[cron] reconciled ${staleRecording.count} orphaned RECORDING_PROCESSING session(s) → COMPLETED`);
+  }
+
+  return { ended: staleLive.count, completed: staleRecording.count };
+}
+
 async function processQueue(): Promise<{ sent: number; failed: number; retrying: number; cancelled: number }> {
   const pending = await prisma.scheduledNotification.findMany({
     where: { status: "PENDING", scheduledAt: { lte: new Date() } },
@@ -670,7 +815,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const recovered = await recoverStaleProcessing();
+    const [recovered, orphans] = await Promise.all([
+      recoverStaleProcessing(),
+      reconcileOrphanedLiveSessions(),
+    ]);
 
     const [
       taskReminders,
@@ -682,6 +830,8 @@ export async function POST(req: NextRequest) {
       unassignedLeads,
       teamOverdue,
       outstandingBalance,
+      liveSessionReminders,
+      liveSessionRecordingReady,
     ] = await Promise.all([
       discoverTaskReminders(),
       discoverOverdueTasks(),
@@ -692,6 +842,8 @@ export async function POST(req: NextRequest) {
       discoverUnassignedLeadsAlert(),
       discoverTeamOverdueAlert(),
       discoverOutstandingBalance(),
+      discoverLiveSessionReminders(),
+      discoverLiveSessionRecordingReady(),
     ]);
 
     const queue = await processQueue();
@@ -699,6 +851,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       recovered,
+      orphans,
       enqueued: {
         taskReminders,
         overdueTasks,
@@ -709,6 +862,8 @@ export async function POST(req: NextRequest) {
         unassignedLeads,
         teamOverdue,
         outstandingBalance,
+        liveSessionReminders,
+        liveSessionRecordingReady,
       },
       queue,
     });

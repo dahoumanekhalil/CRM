@@ -110,12 +110,27 @@ function decodeMsg(payload: Uint8Array): WBMessage | null {
 
 // ── WhiteboardPanel ───────────────────────────────────────────────────────────
 
-export function WhiteboardPanel() {
+export function WhiteboardPanel({
+  liveSessionId,
+  initialSnapshot,
+  saveSnapshotAction,
+  readOnly = false,
+}: {
+  liveSessionId?: string;
+  initialSnapshot?: TLEditorSnapshot | null;
+  saveSnapshotAction?: (
+    liveSessionId: string,
+    snapshot: object
+  ) => Promise<{ ok: boolean; error?: string }>;
+  readOnly?: boolean;
+}) {
   const room = useRoomContext();
   const editorRef = React.useRef<Editor | null>(null);
 
   // ── Receive messages from remote participants ───────────────────────────────
   React.useEffect(() => {
+    if (readOnly) return; // read-only panels don't participate in live sync
+
     function onData(payload: Uint8Array) {
       const editor = editorRef.current;
       if (!editor) return;
@@ -123,13 +138,10 @@ export function WhiteboardPanel() {
       if (!msg) return;
 
       if (msg.type === "wb_snapshot") {
-        // Wrap in mergeRemoteChanges so the user-source store listener
-        // does NOT fire → no echo back to sender.
         editor.store.mergeRemoteChanges(() => {
           editor.loadSnapshot(msg.snapshot);
         });
       } else if (msg.type === "wb_request") {
-        // A new participant asked for the current state — send it.
         const snapshot = editor.getSnapshot();
         void room.localParticipant
           .publishData(encodeMsg({ type: "wb_snapshot", snapshot }), {
@@ -143,24 +155,42 @@ export function WhiteboardPanel() {
     return () => {
       room.off(RoomEvent.DataReceived, onData);
     };
-  }, [room]);
+  }, [room, readOnly]);
 
   // ── Mount the tldraw editor ────────────────────────────────────────────────
   function handleMount(editor: Editor): (() => void) | void {
     editorRef.current = editor;
 
-    // Request current whiteboard state from the room on first open.
+    // 10.2 — Load persisted snapshot before requesting live state.
+    // This ensures new joiners see the whiteboard even if no one else is in the room.
+    if (initialSnapshot) {
+      editor.store.mergeRemoteChanges(() => {
+        editor.loadSnapshot(initialSnapshot);
+      });
+    }
+
+    if (readOnly) {
+      // Read-only mode: disable editing, no sync.
+      editor.updateInstanceState({ isReadonly: true });
+      return;
+    }
+
+    // Request live state from any participant already in the room.
+    // Their response (wb_snapshot) will override the DB snapshot if more recent.
     void room.localParticipant
       .publishData(encodeMsg({ type: "wb_request" }), { reliable: true })
       .catch(() => {});
 
-    // Publish a debounced full snapshot whenever the local user makes changes.
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    // Real-time sync: publish full snapshot on local changes (300 ms debounce).
+    let rtTimer: ReturnType<typeof setTimeout> | null = null;
+    // DB persistence: save snapshot to DB every 10 s after the last change.
+    let dbTimer: ReturnType<typeof setTimeout> | null = null;
 
     const unlistenStore = editor.store.listen(
       () => {
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
+        // Real-time broadcast
+        if (rtTimer) clearTimeout(rtTimer);
+        rtTimer = setTimeout(() => {
           const snapshot = editor.getSnapshot();
           void room.localParticipant
             .publishData(encodeMsg({ type: "wb_snapshot", snapshot }), {
@@ -168,12 +198,22 @@ export function WhiteboardPanel() {
             })
             .catch(() => {});
         }, 300);
+
+        // DB persistence (host only, when saveSnapshotAction is provided)
+        if (liveSessionId && saveSnapshotAction) {
+          if (dbTimer) clearTimeout(dbTimer);
+          dbTimer = setTimeout(() => {
+            const snapshot = editor.getSnapshot() as unknown as object;
+            void saveSnapshotAction(liveSessionId, snapshot);
+          }, 10_000);
+        }
       },
       { source: "user", scope: "document" }
     );
 
     return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
+      if (rtTimer) clearTimeout(rtTimer);
+      if (dbTimer) clearTimeout(dbTimer);
       unlistenStore();
     };
   }

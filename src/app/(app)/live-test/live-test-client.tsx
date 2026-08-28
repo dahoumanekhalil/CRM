@@ -7,7 +7,17 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LiveRoom } from "@/components/livekit/live-room";
-import { getTokenAction } from "./actions";
+import {
+  getTokenAction,
+  admitGuestAction,
+  rejectGuestAction,
+  grantSpeakingAction,
+  revokeSpeakingAction,
+  muteTrackAction,
+  kickAction,
+  muteAllAction,
+  toggleLockAction,
+} from "./actions";
 
 // ── Lobby ─────────────────────────────────────────────────────────────────────
 
@@ -30,11 +40,7 @@ function Lobby({
 
     // Pre-flight: WebRTC is required. Catch unsupported browsers before
     // making a server round-trip to generate a token.
-    if (
-      typeof window === "undefined" ||
-      !("RTCPeerConnection" in window) ||
-      !navigator.mediaDevices
-    ) {
+    if (typeof window === "undefined" || !("RTCPeerConnection" in window)) {
       toast.error(
         "Your browser doesn't support video calls. Please use Chrome, Firefox, or Safari."
       );
@@ -66,10 +72,10 @@ function Lobby({
         {/* Heading */}
         <div className="space-y-1.5 text-center">
           <h1 className="text-2xl font-semibold tracking-tight">
-            Live Classroom
+            Live Room Diagnostics
           </h1>
           <p className="text-sm text-muted-foreground">
-            Enter a room name to start or join a live session.
+            Enter a room name to open an ad-hoc LiveKit room for testing.
           </p>
         </div>
 
@@ -108,7 +114,7 @@ function Lobby({
         </form>
 
         <p className="text-center text-xs text-muted-foreground">
-          POC · Phase 1 · Open another browser window to test multi-user
+          Admin only · Open another browser window to test multi-participant
         </p>
       </div>
     </div>
@@ -123,6 +129,7 @@ export function LiveTestClient() {
     url: string;
     room: string;
   } | null>(null);
+  const [isLocked, setIsLocked] = React.useState(false);
 
   if (session) {
     return (
@@ -130,7 +137,21 @@ export function LiveTestClient() {
         token={session.token}
         url={session.url}
         room={session.room}
+        isHost
         onLeave={() => setSession(null)}
+        liveSessionId={session.room}
+        admitAction={admitGuestAction}
+        rejectAction={rejectGuestAction}
+        isLocked={isLocked}
+        onLockedChange={setIsLocked}
+        moderationActions={{
+          muteTrack: muteTrackAction,
+          kick: kickAction,
+          grantSpeaking: grantSpeakingAction,
+          revokeSpeaking: revokeSpeakingAction,
+          muteAll: muteAllAction,
+          toggleLock: toggleLockAction,
+        }}
       />
     );
   }

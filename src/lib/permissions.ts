@@ -104,6 +104,10 @@ export const PERMISSIONS = {
   "telegram.admin": ["ADMIN"] as const,
   "telegram.manage": MANAGERS,
 
+  // Live classroom
+  "live.view": OPS_SIDE,
+  "live.host": TRAINERS,
+
   // Settings — Admin only.
   "settings.view": ["ADMIN"] as const,
   "settings.write": ["ADMIN"] as const,

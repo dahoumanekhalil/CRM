@@ -53,6 +53,14 @@ export const NotificationTypes = {
   REFUND_APPROVED: "refund.approved",
   REFUND_REJECTED: "refund.rejected",
 
+  // ── Live Classroom ────────────────────────────────────────────────────────
+  LIVE_SESSION_REMINDER: "liveSession.reminder",                     // 30 min + 10 min before start (host)
+  LIVE_SESSION_STARTED: "liveSession.started",                       // trainer goes live (host)
+  LIVE_SESSION_STUDENT_JOIN: "liveSession.studentJoin",              // enrolled students notified when live
+  LIVE_SESSION_RECORDING_READY: "liveSession.recordingReady",        // egress complete (host)
+  LIVE_SESSION_STUDENT_REMINDER: "liveSession.studentReminder",      // 31.2 — student 30/10-min reminders
+  LIVE_SESSION_STUDENT_RECORDING_READY: "liveSession.studentRecordingReady", // 31.3 — student recording ready
+
   // ── Deprecated — kept for backward compatibility only ────────────────────
   SESSION_NEAR_CAPACITY: "session.nearCapacity",
   SESSION_REMINDER: "session.reminder",

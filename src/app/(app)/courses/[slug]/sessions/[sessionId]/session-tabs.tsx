@@ -2,10 +2,10 @@
 
 import * as React from "react";
 import { parseAsStringLiteral, useQueryState } from "nuqs";
-import { Activity, BarChart2, Contact, Info, Users, Wallet } from "lucide-react";
+import { Activity, BarChart2, Contact, Info, Radio, Users, Wallet } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
-const TAB_VALUES = ["overview", "students", "leads", "payments", "financials", "activity"] as const;
+const TAB_VALUES = ["overview", "students", "leads", "payments", "financials", "live", "activity"] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
 const tabParam = parseAsStringLiteral(TAB_VALUES)
@@ -18,18 +18,22 @@ export function SessionTabsView({
   leadsSlot,
   paymentsSlot,
   financialsSlot,
+  liveSlot,
   activitySlot,
   enrolledCount,
   leadsCount,
+  isLive,
 }: {
   overviewSlot: React.ReactNode;
   studentsSlot: React.ReactNode;
   leadsSlot: React.ReactNode;
   paymentsSlot: React.ReactNode;
   financialsSlot: React.ReactNode;
+  liveSlot: React.ReactNode;
   activitySlot: React.ReactNode;
   enrolledCount: number;
   leadsCount: number;
+  isLive?: boolean;
 }) {
   const [tab, setTab] = useQueryState("tab", tabParam);
 
@@ -71,6 +75,13 @@ export function SessionTabsView({
             <BarChart2 className="size-3.5" />
             Financials
           </TabsTrigger>
+          <TabsTrigger value="live">
+            <Radio className={isLive ? "size-3.5 text-red-500" : "size-3.5"} />
+            Live
+            {isLive && (
+              <span className="ms-1 inline-flex size-1.5 rounded-full bg-red-500 animate-pulse" />
+            )}
+          </TabsTrigger>
           <TabsTrigger value="activity">
             <Activity className="size-3.5" />
             Activity
@@ -83,6 +94,7 @@ export function SessionTabsView({
       <TabsContent value="leads">{leadsSlot}</TabsContent>
       <TabsContent value="payments">{paymentsSlot}</TabsContent>
       <TabsContent value="financials">{financialsSlot}</TabsContent>
+      <TabsContent value="live">{liveSlot}</TabsContent>
       <TabsContent value="activity">{activitySlot}</TabsContent>
     </Tabs>
   );

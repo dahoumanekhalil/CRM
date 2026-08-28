@@ -83,9 +83,21 @@ const PREF_LABELS_EN: Record<string, string> = {
   "commission.adjusted": "Commission adjusted",
   "commission.payoutProcessed": "Commission payout",
   "refund.requested": "Refund request notifications",
+  "liveSession.reminder": "Live session reminders",
+  "liveSession.started": "Live session started alerts",
+  "liveSession.studentJoin": "Live class started alerts",
+  "liveSession.recordingReady": "Recording ready notifications",
+  "liveSession.studentReminder": "Live class reminders for students",
+  "liveSession.studentRecordingReady": "Recording ready notifications for students",
 };
 
 const PREF_LABELS_AR: Record<string, string> = {
+  "liveSession.reminder": "تذكيرات الفصول المباشرة",
+  "liveSession.started": "إشعار بدء الجلسة المباشرة",
+  "liveSession.studentJoin": "إشعار بدء فصلك المباشر",
+  "liveSession.recordingReady": "إشعار جاهزية التسجيل",
+  "liveSession.studentReminder": "تذكيرات الفصل المباشر للطلاب",
+  "liveSession.studentRecordingReady": "إشعار جاهزية التسجيل للطلاب",
   "task.assigned": "تعيينات المهام",
   "task.reminder": "تذكيرات المهام",
   "task.overdue": "تنبيهات المهام المتأخرة",
@@ -785,6 +797,79 @@ export function msgRefundRequested(
   return lang === "ar"
     ? `💰 <b>طلب استرجاع جديد</b>\n\nالطالب: ${escHtml(studentName)}\nالدورة: ${escHtml(courseName)}\nالمبلغ: ${escHtml(amount)} ${escHtml(currency)}\nالسبب: ${escHtml(reason)}${linkLine}`
     : `💰 <b>Refund Request</b>\n\nStudent: ${escHtml(studentName)}\nCourse: ${escHtml(courseName)}\nAmount: ${escHtml(amount)} ${escHtml(currency)}\nReason: ${escHtml(reason)}${linkLine}`;
+}
+
+// ── Live Classroom notifications ──────────────────────────────────────────────
+
+export function msgLiveSessionReminder(
+  courseName: string,
+  minutesBefore: number,
+  sessionUrl: string,
+  lang: Lang = "en",
+): string {
+  const name = escHtml(courseName);
+  const mins = minutesBefore.toString();
+  return lang === "ar"
+    ? `🔴 <b>تذكير: جلسة مباشرة خلال ${mins} دقيقة</b>\n\n📚 ${name}\n\nاستعد للجلسة — ستبدأ قريباً.\n\n${link(sessionUrl, "عرض الجلسة →")}`
+    : `🔴 <b>Live session starting in ${mins} min</b>\n\n📚 ${name}\n\nGet ready — your session is about to begin.\n\n${link(sessionUrl, "View session →")}`;
+}
+
+export function msgLiveSessionStarted(
+  courseName: string,
+  sessionUrl: string,
+  lang: Lang = "en",
+): string {
+  const name = escHtml(courseName);
+  return lang === "ar"
+    ? `🔴 <b>الجلسة المباشرة بدأت الآن</b>\n\n📚 ${name}\n\nانضم الآن إلى الفصل الافتراضي.\n\n${link(sessionUrl, "الدخول إلى الفصل →")}`
+    : `🔴 <b>Live session is now live</b>\n\n📚 ${name}\n\nJoin now — the classroom is open.\n\n${link(sessionUrl, "Enter classroom →")}`;
+}
+
+export function msgLiveSessionStudentJoin(
+  courseName: string,
+  joinUrl: string,
+  lang: Lang = "en",
+): string {
+  const name = escHtml(courseName);
+  return lang === "ar"
+    ? `🔴 <b>فصلك المباشر بدأ الآن</b>\n\n📚 ${name}\n\nانضم الآن — المحاضر جاهز لك.\n\n${link(joinUrl, "انضم إلى الفصل →")}`
+    : `🔴 <b>Your live class has started</b>\n\n📚 ${name}\n\nThe trainer is ready — join now.\n\n${link(joinUrl, "Join classroom →")}`;
+}
+
+export function msgLiveSessionRecordingReady(
+  courseName: string,
+  replayUrl: string,
+  lang: Lang = "en",
+): string {
+  const name = escHtml(courseName);
+  return lang === "ar"
+    ? `🎬 <b>التسجيل جاهز</b>\n\n📚 ${name}\n\nتسجيل الجلسة المباشرة أصبح متاحاً للمراجعة.\n\n${link(replayUrl, "مشاهدة التسجيل →")}`
+    : `🎬 <b>Recording is ready</b>\n\n📚 ${name}\n\nThe live session recording is now available to review.\n\n${link(replayUrl, "Watch recording →")}`;
+}
+
+// 31.2 — Student reminder (30-min / 10-min before live session).
+export function msgLiveSessionStudentReminder(
+  courseName: string,
+  joinUrl: string,
+  minutesBefore: number,
+  lang: Lang = "en",
+): string {
+  const name = escHtml(courseName);
+  return lang === "ar"
+    ? `⏰ <b>فصلك المباشر يبدأ خلال ${minutesBefore} دقيقة</b>\n\n📚 ${name}\n\nاستعد للانضمام إلى الفصل الافتراضي.\n\n${link(joinUrl, "انضم إلى الفصل →")}`
+    : `⏰ <b>Your live class starts in ${minutesBefore} minutes</b>\n\n📚 ${name}\n\nGet ready to join the virtual classroom.\n\n${link(joinUrl, "Join classroom →")}`;
+}
+
+// 31.3 — Student recording-ready notification.
+export function msgLiveSessionStudentRecordingReady(
+  courseName: string,
+  replayUrl: string,
+  lang: Lang = "en",
+): string {
+  const name = escHtml(courseName);
+  return lang === "ar"
+    ? `🎬 <b>تسجيل فصلك المباشر جاهز</b>\n\n📚 ${name}\n\nأصبح التسجيل متاحاً للمراجعة الآن.\n\n${link(replayUrl, "مشاهدة التسجيل →")}`
+    : `🎬 <b>Your class recording is ready</b>\n\n📚 ${name}\n\nThe recording from your live session is now available to watch.\n\n${link(replayUrl, "Watch recording →")}`;
 }
 
 // ── Backward compat aliases ───────────────────────────────────────────────────

@@ -34,6 +34,12 @@ import {
   msgDailyDigestSales,
   msgDailyDigestTrainer,
   msgDailyDigestFinance,
+  msgLiveSessionReminder,
+  msgLiveSessionStarted,
+  msgLiveSessionStudentJoin,
+  msgLiveSessionStudentReminder,
+  msgLiveSessionStudentRecordingReady,
+  msgLiveSessionRecordingReady,
   type DailyDigestStats,
   type Lang,
 } from "@/lib/telegram/message-templates";
@@ -364,6 +370,63 @@ function formatMessage(intent: NotificationIntent, lang: Lang): string | null {
         return msgDailyDigestSales(str(payload.date), stats, deepLink("/leads?ownership=mine"), lang);
       }
       return msgC5fDailyDigest(str(payload.date), stats, lang, deepLink("/"));
+    }
+
+    // ── Live Classroom ───────────────────────────────────────────────────────
+    case "liveSession.reminder": {
+      if (!payload.courseName) return null;
+      return msgLiveSessionReminder(
+        str(payload.courseName),
+        num(payload.minutesBefore) || 30,
+        deepLink(`/courses/${str(payload.courseSlug)}/sessions/${str(payload.courseSessionId)}`),
+        lang,
+      );
+    }
+
+    case "liveSession.started": {
+      if (!payload.courseName) return null;
+      return msgLiveSessionStarted(
+        str(payload.courseName),
+        deepLink(`/courses/${str(payload.courseSlug)}/sessions/${str(payload.courseSessionId)}`),
+        lang,
+      );
+    }
+
+    case "liveSession.studentJoin": {
+      if (!payload.courseName) return null;
+      return msgLiveSessionStudentJoin(
+        str(payload.courseName),
+        deepLink(`/courses/${str(payload.courseSlug)}/sessions/${str(payload.courseSessionId)}`),
+        lang,
+      );
+    }
+
+    case "liveSession.recordingReady": {
+      if (!payload.courseName) return null;
+      return msgLiveSessionRecordingReady(
+        str(payload.courseName),
+        deepLink(`/courses/${str(payload.courseSlug)}/sessions/${str(payload.courseSessionId)}`),
+        lang,
+      );
+    }
+
+    case "liveSession.studentReminder": {
+      if (!payload.courseName) return null;
+      return msgLiveSessionStudentReminder(
+        str(payload.courseName),
+        deepLink(`/courses/${str(payload.courseSlug)}/sessions/${str(payload.courseSessionId)}`),
+        typeof payload.minutesBefore === "number" ? payload.minutesBefore : 30,
+        lang,
+      );
+    }
+
+    case "liveSession.studentRecordingReady": {
+      if (!payload.courseName) return null;
+      return msgLiveSessionStudentRecordingReady(
+        str(payload.courseName),
+        deepLink(`/courses/${str(payload.courseSlug)}/sessions/${str(payload.courseSessionId)}`),
+        lang,
+      );
     }
 
     // ── Deprecated fallback ─────────────────────────────────────────────────

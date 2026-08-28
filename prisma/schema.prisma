@@ -55,6 +55,9 @@ model User {
   initiatedConnections     TelegramConnection[]    @relation("TelegramConnectionInitiator")
   telegramAuditActions     TelegramConnectionAudit[] @relation("TelegramAuditActor")
   telegramAuditTargets     TelegramConnectionAudit[] @relation("TelegramAuditTarget")
+  hostedLiveSessions       LiveSession[]           @relation("LiveSessionHost")
+  liveParticipations       LiveSessionParticipant[] @relation("LiveSessionParticipantUser")
+  createdPolls             LivePoll[]               @relation("LivePollCreatedBy")
 
   // Commission system
   salesCommissions       SalesCommission[]       @relation("SalesCommissionAgent")
@@ -328,6 +331,7 @@ model CourseSession {
   attendance    Attendance[]
   interestedLeads Lead[]       @relation("LeadInterestedSession")
   expenses      Expense[]
+  liveSessions  LiveSession[]
 
   @@index([courseId])
   @@index([status])
@@ -390,15 +394,20 @@ enum RegistrationStatus {
 }
 
 model Attendance {
-  id             String           @id @default(cuid())
-  registrationId String
-  sessionId      String
-  sessionDate    DateTime         @db.Date
-  status         AttendanceStatus @default(PRESENT)
-  checkInMethod  String           @default("manual")
-  notes          String?
-  recordedById   String?
-  recordedAt     DateTime         @default(now())
+  id              String           @id @default(cuid())
+  registrationId  String
+  sessionId       String
+  sessionDate     DateTime         @db.Date
+  status          AttendanceStatus @default(PRESENT)
+  checkInMethod   String           @default("manual")
+  notes           String?
+  recordedById    String?
+  recordedAt      DateTime         @default(now())
+  // LiveKit automatic attendance fields
+  joinedAt        DateTime?
+  leftAt          DateTime?
+  durationSeconds Int              @default(0)
+  lastJoinedAt    DateTime?
 
   registration Registration  @relation(fields: [registrationId], references: [id], onDelete: Cascade)
   session      CourseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
@@ -846,6 +855,14 @@ model ScheduledNotification {
   @@index([entityType, entityId])
 }
 
+model ProcessedWebhookEvent {
+  id          String   @id  // LiveKit event ID (UUID from the webhook payload)
+  event       String
+  processedAt DateTime @default(now())
+
+  @@index([processedAt])
+}
+
 // ==========================================================
 // Telegram — connection state machine & audit trail
 // See LEVEL2.md §C — Phase 1 (TelegramConnection model)
@@ -1086,4 +1103,182 @@ model RefundApproval {
   @@index([status])
   @@index([requestedById])
   @@index([createdAt])
+}
+
+// ==========================================================
+// Live Sessions — real-time video classroom
+// Each CourseSession can have at most one LiveSession (one-to-one).
+// The roomName is a secure random identifier used as the LiveKit room key.
+// ==========================================================
+
+enum LiveSessionStatus {
+  SCHEDULED
+  WAITING
+  LIVE
+  ENDED
+  RECORDING_PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+model LiveSession {
+  id              String            @id @default(cuid())
+  courseSessionId String
+  roomName        String            @unique
+  hostId          String?
+  status          LiveSessionStatus @default(SCHEDULED)
+  scheduledAt     DateTime?
+  startedAt       DateTime?
+  endedAt         DateTime?
+  peakParticipants Int              @default(0)
+  totalJoins      Int               @default(0)
+  locked              Boolean           @default(false)
+  egressId            String?
+  recordingUrl        String?
+  whiteboardSnapshot  Json?
+  createdAt           DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  courseSession CourseSession             @relation(fields: [courseSessionId], references: [id], onDelete: Cascade)
+  host          User?                     @relation("LiveSessionHost", fields: [hostId], references: [id], onDelete: SetNull)
+  messages      LiveMessage[]
+  participants  LiveSessionParticipant[]
+  polls         LivePoll[]
+  questions     LiveQuestion[]
+  breakoutRooms BreakoutRoom[]
+
+  @@index([status])
+  @@index([courseSessionId])
+}
+
+model BreakoutRoom {
+  id            String    @id @default(cuid())
+  liveSessionId String
+  name          String
+  roomName      String    @unique
+  status        String    @default("OPEN")   // "OPEN" | "CLOSED"
+  createdAt     DateTime  @default(now())
+  closedAt      DateTime?
+
+  liveSession LiveSession          @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  assignments BreakoutAssignment[]
+
+  @@index([liveSessionId])
+}
+
+model BreakoutAssignment {
+  id             String   @id @default(cuid())
+  breakoutRoomId String
+  identity       String
+  displayName    String
+  assignedAt     DateTime @default(now())
+
+  breakoutRoom BreakoutRoom @relation(fields: [breakoutRoomId], references: [id], onDelete: Cascade)
+
+  @@unique([breakoutRoomId, identity])
+  @@index([breakoutRoomId])
+}
+
+model LiveMessage {
+  id             String      @id @default(cuid())
+  liveSession    LiveSession @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  liveSessionId  String
+  senderIdentity String
+  senderName     String
+  senderRole     String
+  body           String
+  sentAt         DateTime    @default(now())
+
+  @@index([liveSessionId, sentAt])
+}
+
+model LiveSessionParticipant {
+  id                   String      @id @default(cuid())
+  liveSessionId        String
+  userId               String?
+  identity             String
+  displayName          String
+  role                 String      // "host" | "student" | "guest"
+  joinedAt             DateTime
+  leftAt               DateTime?
+  totalDurationSeconds Int         @default(0)
+  lastJoinedAt         DateTime?
+
+  liveSession LiveSession @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  user        User?       @relation("LiveSessionParticipantUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([liveSessionId, identity])
+  @@index([liveSessionId])
+}
+
+enum LivePollStatus {
+  OPEN
+  CLOSED
+}
+
+model LivePoll {
+  id            String         @id @default(cuid())
+  liveSessionId String
+  question      String
+  options       Json           // string[]
+  status        LivePollStatus @default(OPEN)
+  createdById   String?
+  createdAt     DateTime       @default(now())
+  closedAt      DateTime?
+
+  liveSession LiveSession @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  createdBy   User?       @relation("LivePollCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  votes       LivePollVote[]
+
+  @@index([liveSessionId])
+}
+
+model LivePollVote {
+  id            String   @id @default(cuid())
+  pollId        String
+  voterIdentity String
+  option        String
+  votedAt       DateTime @default(now())
+
+  poll LivePoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, voterIdentity])
+  @@index([pollId])
+}
+
+enum LiveQuestionStatus {
+  OPEN
+  PINNED
+  ANSWERED
+  ARCHIVED
+}
+
+model LiveQuestion {
+  id            String             @id @default(cuid())
+  liveSessionId String
+  askerIdentity String
+  askerName     String
+  body          String
+  status        LiveQuestionStatus @default(OPEN)
+  answer        String?
+  upvotes       Int                @default(0)
+  createdAt     DateTime           @default(now())
+  answeredAt    DateTime?
+
+  liveSession   LiveSession           @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  upvoteRecords LiveQuestionUpvote[]
+
+  @@index([liveSessionId, createdAt])
+}
+
+model LiveQuestionUpvote {
+  id            String   @id @default(cuid())
+  questionId    String
+  voterIdentity String
+  votedAt       DateTime @default(now())
+
+  question LiveQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, voterIdentity])
+  @@index([questionId])
 }

@@ -13,6 +13,7 @@ import { PaymentsTab } from "./payments-tab";
 import { StudentCommunicationsTab } from "./communications-tab";
 import { NotesTab } from "./notes-tab";
 import { ActivityTab } from "./activity-tab";
+import { LiveSessionsTab } from "./live-sessions-tab";
 
 type Params = Promise<{ id: string }>;
 
@@ -116,6 +117,7 @@ export default async function StudentDetailPage({
               }
             />
           }
+          liveSessionsSlot={<LiveSessionsTab studentId={student.id} />}
           communicationsSlot={<StudentCommunicationsTab studentId={student.id} />}
           notesSlot={<NotesTab student={student} />}
           activitySlot={<ActivityTab studentId={student.id} />}

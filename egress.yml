@@ -1,0 +1,15 @@
+# LiveKit Egress — development configuration
+# Handles server-side room composite recording, uploads to MinIO.
+# Start/stop via: docker compose up -d livekit-egress
+
+log_level: info
+
+api_key: devkey
+api_secret: secret
+
+# Connect to the LiveKit server (by Docker service name).
+ws_url: ws://livekit:7880
+
+# Redis is required for egress coordination between instances.
+redis:
+  address: redis:6379

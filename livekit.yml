@@ -15,4 +15,12 @@ keys:
 
 logging:
   level: info
-  pion_level: error
+  pion_level: info
+
+# Webhook — fires participant_joined/left and room_finished events.
+# host.docker.internal resolves to the Windows host from inside Docker Desktop.
+# For production, set this to your public HTTPS URL.
+webhook:
+  api_key: devkey
+  urls:
+    - http://host.docker.internal:3000/api/livekit/webhook

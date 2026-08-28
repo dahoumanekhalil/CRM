@@ -7,6 +7,10 @@ export default defineConfig({
     environment: "node",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    env: {
+      LIVEKIT_API_KEY: "testkey",
+      LIVEKIT_API_SECRET: "testsecret",
+    },
     coverage: {
       provider: "v8",
       include: [

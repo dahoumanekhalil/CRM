@@ -64,3 +64,4 @@ algeria_cities.csv
 
 # Docker legacy file (replaced by compose.yml + Podman Quadlet)
 docker-compose.yml
+certificates

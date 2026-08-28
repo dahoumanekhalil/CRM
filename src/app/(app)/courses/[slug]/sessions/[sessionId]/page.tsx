@@ -8,10 +8,12 @@ import { prisma } from "@/lib/prisma";
 import { StatusBadge } from "@/components/primitives/status-badge";
 import { Button } from "@/components/ui/button";
 import { getSessionRoster, getLeadsForSession } from "./actions";
+import { getLiveSession } from "./live-session-actions";
 import { RosterClient } from "./roster-client";
 import { SessionTabsView } from "./session-tabs";
 import { SessionOverviewTab } from "./session-overview-tab";
 import { SessionLeadsTab } from "./session-leads-tab";
+import { SessionLiveTab } from "./session-live-tab";
 import { SessionPaymentsTab } from "./session-payments-tab";
 import { SessionFinancialsTab } from "./session-financials-tab";
 import { SessionActivityTab } from "./session-activity-tab";
@@ -42,9 +44,10 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function SessionRosterPage({ params }: { params: Params }) {
   const { slug, sessionId } = await params;
-  const [roster, leads] = await Promise.all([
+  const [roster, leads, liveSession] = await Promise.all([
     getSessionRoster(sessionId),
     getLeadsForSession(sessionId),
+    getLiveSession(sessionId).catch(() => null),
   ]);
 
   if (!roster || roster.course.slug !== slug) notFound();
@@ -124,6 +127,7 @@ export default async function SessionRosterPage({ params }: { params: Params }) 
       <SessionTabsView
         enrolledCount={roster.registrations.length}
         leadsCount={leads.length}
+        isLive={liveSession?.status === "LIVE"}
         overviewSlot={
           <SessionOverviewTab sessionId={sessionId} roster={roster} />
         }
@@ -133,6 +137,13 @@ export default async function SessionRosterPage({ params }: { params: Params }) 
           <SessionPaymentsTab sessionId={sessionId} currency={currency} />
         }
         financialsSlot={<SessionFinancialsTab sessionId={sessionId} />}
+        liveSlot={
+          <SessionLiveTab
+            sessionId={sessionId}
+            courseSlug={slug}
+            sessionStartDate={roster.startDate}
+          />
+        }
         activitySlot={<SessionActivityTab sessionId={sessionId} />}
       />
     </div>

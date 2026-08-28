@@ -1,6 +1,8 @@
 "use server";
 
-import { generateToken, validateRoomName } from "@/lib/livekit/token";
+import { generateStudentToken, validateRoomName } from "@/lib/livekit/token";
+import { getValidatedLivekitUrl } from "@/lib/livekit/config";
+import { prisma } from "@/lib/prisma";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -28,16 +30,31 @@ export async function guestTokenAction(
     };
   }
 
-  const url = process.env.LIVEKIT_URL;
-  if (!url) {
-    return { ok: false, error: "Meeting server is not configured." };
+  // 29.3 — If this is a LiveSession room, reject join when not LIVE or WAITING.
+  try {
+    const liveSession = await prisma.liveSession.findUnique({
+      where: { roomName: room.trim() },
+      select: { status: true },
+    });
+    if (liveSession) {
+      const status = liveSession.status as string;
+      if (status === "SCHEDULED") {
+        return { ok: false, error: "The session hasn't started yet. Please wait for the trainer to open the classroom." };
+      }
+      if (status !== "LIVE" && status !== "WAITING") {
+        return { ok: false, error: "This session has ended. The classroom is no longer available." };
+      }
+    }
+  } catch {
+    // DB unavailable — fall through and let the room join handle it.
   }
 
   try {
+    const url = getValidatedLivekitUrl();
     // Use a short random suffix so two guests with the same name don't collide.
     const suffix = Math.random().toString(36).slice(2, 8);
-    const identity = `guest_${suffix}`;
-    const token = await generateToken(identity, name, room.trim());
+    const identity = `student_${suffix}`;
+    const token = await generateStudentToken(identity, name, room.trim());
     return { ok: true, data: { token, url } };
   } catch (e) {
     console.error("[LiveKit] guest token generation failed:", e);

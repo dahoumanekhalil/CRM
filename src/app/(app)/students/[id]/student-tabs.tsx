@@ -9,6 +9,7 @@ import {
   FileText,
   Info,
   MessagesSquare,
+  Video,
   Wallet,
 } from "lucide-react";
 
@@ -20,6 +21,7 @@ const TAB_VALUES = [
   "tasks",
   "registrations",
   "payments",
+  "live-sessions",
   "communications",
   "notes",
   "activity",
@@ -36,6 +38,7 @@ export function StudentTabsView({
   tasksSlot,
   registrationsSlot,
   paymentsSlot,
+  liveSessionsSlot,
   communicationsSlot,
   notesSlot,
   activitySlot,
@@ -46,6 +49,7 @@ export function StudentTabsView({
   tasksSlot: React.ReactNode;
   registrationsSlot: React.ReactNode;
   paymentsSlot: React.ReactNode;
+  liveSessionsSlot: React.ReactNode;
   communicationsSlot: React.ReactNode;
   notesSlot: React.ReactNode;
   activitySlot: React.ReactNode;
@@ -85,6 +89,9 @@ export function StudentTabsView({
           Payments
           <CountPill n={student._count.payments} />
         </TabsTrigger>
+        <TabsTrigger value="live-sessions">
+          <Video /> Live Sessions
+        </TabsTrigger>
         <TabsTrigger value="communications">
           <MessagesSquare /> Communications
         </TabsTrigger>
@@ -101,6 +108,7 @@ export function StudentTabsView({
       <TabsContent value="tasks">{tasksSlot}</TabsContent>
       <TabsContent value="registrations">{registrationsSlot}</TabsContent>
       <TabsContent value="payments">{paymentsSlot}</TabsContent>
+      <TabsContent value="live-sessions">{liveSessionsSlot}</TabsContent>
       <TabsContent value="communications">{communicationsSlot}</TabsContent>
       <TabsContent value="notes">{notesSlot}</TabsContent>
       <TabsContent value="activity">{activitySlot}</TabsContent>
