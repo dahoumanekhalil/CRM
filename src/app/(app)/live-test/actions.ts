@@ -12,6 +12,11 @@ import {
   muteAllStudents,
   removeParticipant,
 } from "@/lib/livekit/room-service";
+import {
+  banFromRoom,
+  unbanFromRoom,
+  isBanned,
+} from "@/lib/livekit/ephemeral-bans";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -36,7 +41,14 @@ export async function getTokenAction(
     const url = getValidatedLivekitUrl();
     const identity = session.user.id;
     const name = session.user.name ?? session.user.email ?? identity;
-    const token = await generateHostToken(identity, name, room.trim());
+    const roomName = room.trim();
+    if (isBanned(roomName, identity, name)) {
+      return {
+        ok: false,
+        error: "You have been removed from this session by a moderator.",
+      };
+    }
+    const token = await generateHostToken(identity, name, roomName);
     return { ok: true, data: { token, url } };
   } catch (e) {
     console.error("[LiveKit] token generation failed:", e);
@@ -154,6 +166,132 @@ export async function muteAllAction(
     console.error("[LiveKit] muteAll failed:", e);
     return { ok: false, error: "Could not mute all participants." };
   }
+}
+
+// ── Block / unblock from live ────────────────────────────────────────────────
+// "Block" = kick them out AND prevent them from rejoining. Contrast with
+// kickAction above, which only removes them from the current session and lets
+// them rejoin immediately.
+
+export async function blockFromLiveAction(
+  roomName: string,
+  identity: string,
+  displayName: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const session = await auth();
+    if (session?.user?.role !== "ADMIN") {
+      return { ok: false, error: "Unauthorized." };
+    }
+    // Record the ban BEFORE kicking, so a race between the removal-triggered
+    // reconnect and the ban write can't slip through.
+    banFromRoom(roomName, identity, displayName, session.user.id);
+    // Best-effort kick — if the user already left, this errors harmlessly.
+    try {
+      await removeParticipant(roomName, identity);
+    } catch (e) {
+      console.warn("[LiveKit] block: removeParticipant failed (already gone?)", e);
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error("[LiveKit] blockFromLive failed:", e);
+    return { ok: false, error: "Could not remove and block participant." };
+  }
+}
+
+export async function unblockFromLiveAction(
+  roomName: string,
+  identity: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await assertAdmin();
+    unbanFromRoom(roomName, identity);
+    return { ok: true };
+  } catch (e) {
+    console.error("[LiveKit] unblockFromLive failed:", e);
+    return { ok: false, error: "Could not unblock participant." };
+  }
+}
+
+// ── Ephemeral Q&A stubs ──────────────────────────────────────────────────────
+// The live-test diagnostic room has no LiveSession DB row, so the real
+// askQuestion / upvoteQuestion / updateQuestionStatus actions can't be used.
+// These return the shape QAPanel expects without persisting — the actual
+// question state travels over the LiveKit data channel and lives in the
+// clients' React state. Real classrooms use the DB-backed actions in
+// courses/[slug]/sessions/[sessionId]/live-session-actions.ts.
+
+const QA_MAX_BODY = 2000;
+const QA_MAX_ANSWER = 4000;
+const QA_ALLOWED_STATUSES = new Set(["OPEN", "PINNED", "ANSWERED", "ARCHIVED"]);
+
+export async function askQuestionEphemeralAction(
+  roomName: string,
+  body: string,
+  askerIdentity: string,
+  askerName: string
+): Promise<{
+  ok: boolean;
+  error?: string;
+  data?: {
+    id: string;
+    askerIdentity: string;
+    askerName: string;
+    body: string;
+    createdAt: Date;
+  };
+}> {
+  const session = await auth();
+  if (!session?.user?.id) return { ok: false, error: "Unauthorized." };
+  const trimmed = body.trim();
+  if (!trimmed) return { ok: false, error: "Question cannot be empty." };
+  if (trimmed.length > QA_MAX_BODY) {
+    return { ok: false, error: `Question is too long (max ${QA_MAX_BODY} characters).` };
+  }
+  try {
+    validateRoomName(roomName);
+  } catch {
+    return { ok: false, error: "Invalid room." };
+  }
+  return {
+    ok: true,
+    data: {
+      id: crypto.randomUUID(),
+      askerIdentity,
+      askerName,
+      body: trimmed,
+      createdAt: new Date(),
+    },
+  };
+}
+
+export async function upvoteQuestionEphemeralAction(
+  questionId: string,
+  voterIdentity: string
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) return { ok: false, error: "Unauthorized." };
+  if (!questionId || !voterIdentity) {
+    return { ok: false, error: "Invalid vote." };
+  }
+  return { ok: true };
+}
+
+export async function updateQuestionStatusEphemeralAction(
+  questionId: string,
+  status: string,
+  answer?: string
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) return { ok: false, error: "Unauthorized." };
+  if (!questionId) return { ok: false, error: "Invalid question." };
+  if (!QA_ALLOWED_STATUSES.has(status)) {
+    return { ok: false, error: "Invalid status." };
+  }
+  if (answer !== undefined && answer.length > QA_MAX_ANSWER) {
+    return { ok: false, error: `Answer is too long (max ${QA_MAX_ANSWER} characters).` };
+  }
+  return { ok: true };
 }
 
 // Lock state is in-memory only — live-test has no DB row to persist it to.

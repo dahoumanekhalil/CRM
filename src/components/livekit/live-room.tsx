@@ -44,7 +44,11 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { WhiteboardPanel } from "./whiteboard-panel";
+import {
+  WhiteboardPanel,
+  encodeWBMsg,
+  decodeWBMsg,
+} from "./whiteboard-panel";
 import {
   StudentWaitingWrapper,
   WaitingParticipantsList,
@@ -54,7 +58,11 @@ import {
   ModeratorToggle,
   type ModerationActions,
 } from "./moderator-panel";
-import { ChatPanel } from "./chat-panel";
+import {
+  ChatPanel,
+  decodeChatModMsg,
+  encodeChatModMsg,
+} from "./chat-panel";
 import { RaiseHandButton, RaisedHandsList } from "./raise-hand";
 import {
   type ActivePoll,
@@ -665,6 +673,8 @@ function RoomContent({
   stopRecordingAction,
   sendMessageAction,
   getChatHistoryAction,
+  blockFromLiveAction,
+  unblockFromLiveAction,
   initialWhiteboardSnapshot,
   saveWhiteboardSnapshotAction,
   createPollAction,
@@ -695,6 +705,8 @@ function RoomContent({
   stopRecordingAction?: (liveSessionId: string) => Promise<{ ok: boolean; error?: string }>;
   sendMessageAction?: (liveSessionId: string, body: string) => Promise<{ ok: boolean; error?: string }>;
   getChatHistoryAction?: (liveSessionId: string, limit?: number) => Promise<{ ok: true; data: ChatMessage[] } | { ok: false; error: string }>;
+  blockFromLiveAction?: (liveSessionId: string, identity: string, displayName: string) => Promise<{ ok: boolean; error?: string }>;
+  unblockFromLiveAction?: (liveSessionId: string, identity: string) => Promise<{ ok: boolean; error?: string }>;
   initialWhiteboardSnapshot?: TLEditorSnapshot | null;
   saveWhiteboardSnapshotAction?: (liveSessionId: string, snapshot: object) => Promise<{ ok: boolean; error?: string }>;
   createPollAction?: (liveSessionId: string, question: string, options: string[]) => Promise<{ ok: true; data: { id: string; question: string; options: string[] } } | { ok: false; error: string }>;
@@ -824,6 +836,219 @@ function RoomContent({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pollRoom, showQA]);
 
+  // ── Chat moderation (in-memory, broadcast via LiveKit data channel) ────────
+  // identity → display name. Live-only for the diagnostic room; real classroom
+  // DB persistence can be added later without changing this shape.
+  const [chatBlocked, setChatBlocked] = React.useState<Map<string, string>>(
+    () => new Map()
+  );
+  const [liveBanned, setLiveBanned] = React.useState<Map<string, string>>(
+    () => new Map()
+  );
+  // Keep refs so the sync-request responder always sees the latest set
+  // without re-binding the event listener on every mutation.
+  const chatBlockedRef = React.useRef(chatBlocked);
+  const liveBannedRef = React.useRef(liveBanned);
+  React.useEffect(() => {
+    chatBlockedRef.current = chatBlocked;
+  }, [chatBlocked]);
+  React.useEffect(() => {
+    liveBannedRef.current = liveBanned;
+  }, [liveBanned]);
+
+  React.useEffect(() => {
+    function handleData(payload: Uint8Array) {
+      const msg = decodeChatModMsg(payload);
+      if (!msg) return;
+      if (msg.type === "chat_block") {
+        setChatBlocked((prev) => {
+          if (prev.get(msg.identity) === msg.name) return prev;
+          const next = new Map(prev);
+          next.set(msg.identity, msg.name);
+          return next;
+        });
+      } else if (msg.type === "chat_unblock") {
+        setChatBlocked((prev) => {
+          if (!prev.has(msg.identity)) return prev;
+          const next = new Map(prev);
+          next.delete(msg.identity);
+          return next;
+        });
+      } else if (msg.type === "participant_ban") {
+        setLiveBanned((prev) => {
+          if (prev.get(msg.identity) === msg.name) return prev;
+          const next = new Map(prev);
+          next.set(msg.identity, msg.name);
+          return next;
+        });
+        // If I am the target, disconnect myself and surface a clear reason.
+        // The server will also kick me via removeParticipant, but doing it
+        // here first gives me a friendly toast instead of a generic "session
+        // expired" message from the connection banner.
+        if (msg.identity === pollRoom.localParticipant.identity) {
+          toast.error(
+            "You've been removed from this session by a moderator.",
+            { duration: 8000 }
+          );
+          void pollRoom.disconnect();
+        }
+      } else if (msg.type === "participant_unban") {
+        setLiveBanned((prev) => {
+          if (!prev.has(msg.identity)) return prev;
+          const next = new Map(prev);
+          next.delete(msg.identity);
+          return next;
+        });
+      } else if (msg.type === "chat_mod_sync_req") {
+        // Someone just joined — if I have moderation state, share it.
+        const blocked = chatBlockedRef.current;
+        const banned = liveBannedRef.current;
+        if (blocked.size === 0 && banned.size === 0) return;
+        const data = encodeChatModMsg({
+          type: "chat_mod_sync",
+          blocked: Array.from(blocked.entries()).map(([identity, name]) => ({
+            identity,
+            name,
+          })),
+          banned: Array.from(banned.entries()).map(([identity, name]) => ({
+            identity,
+            name,
+          })),
+        });
+        void pollRoom.localParticipant.publishData(data, { reliable: true });
+      } else if (msg.type === "chat_mod_sync") {
+        // Merge (union) — no coordinator, first non-empty response wins for
+        // any given identity; conflicting names just take the latest.
+        setChatBlocked((prev) => {
+          const next = new Map(prev);
+          for (const b of msg.blocked) next.set(b.identity, b.name);
+          return next;
+        });
+        setLiveBanned((prev) => {
+          const next = new Map(prev);
+          for (const b of msg.banned) next.set(b.identity, b.name);
+          return next;
+        });
+      }
+    }
+    pollRoom.on(RoomEvent.DataReceived, handleData);
+    return () => {
+      pollRoom.off(RoomEvent.DataReceived, handleData);
+    };
+  }, [pollRoom]);
+
+  // On connect, ask the room for the current chat-block state so we don't
+  // start out of sync with participants who joined earlier.
+  React.useEffect(() => {
+    function requestSync() {
+      const data = encodeChatModMsg({ type: "chat_mod_sync_req" });
+      void pollRoom.localParticipant.publishData(data, { reliable: true });
+    }
+    if (pollRoom.state === ConnectionState.Connected) {
+      requestSync();
+    } else {
+      pollRoom.once(RoomEvent.Connected, requestSync);
+      return () => {
+        pollRoom.off(RoomEvent.Connected, requestSync);
+      };
+    }
+  }, [pollRoom]);
+
+  const handleChatBlock = React.useCallback(
+    (identity: string, name: string) => {
+      // Optimistic local update, then broadcast to everyone.
+      setChatBlocked((prev) => {
+        const next = new Map(prev);
+        next.set(identity, name);
+        return next;
+      });
+      const data = encodeChatModMsg({ type: "chat_block", identity, name });
+      void pollRoom.localParticipant.publishData(data, { reliable: true });
+      toast.success(`${name} muted from chat.`);
+    },
+    [pollRoom]
+  );
+
+  const handleChatUnblock = React.useCallback(
+    (identity: string) => {
+      const name = chatBlockedRef.current.get(identity);
+      setChatBlocked((prev) => {
+        if (!prev.has(identity)) return prev;
+        const next = new Map(prev);
+        next.delete(identity);
+        return next;
+      });
+      const data = encodeChatModMsg({ type: "chat_unblock", identity });
+      void pollRoom.localParticipant.publishData(data, { reliable: true });
+      if (name) toast.success(`${name} unmuted.`);
+    },
+    [pollRoom]
+  );
+
+  const handleUnbanFromLive = React.useCallback(
+    (identity: string) => {
+      if (!liveSessionId || !unblockFromLiveAction) return;
+      const name = liveBannedRef.current.get(identity);
+      setLiveBanned((prev) => {
+        if (!prev.has(identity)) return prev;
+        const next = new Map(prev);
+        next.delete(identity);
+        return next;
+      });
+      const data = encodeChatModMsg({ type: "participant_unban", identity });
+      void pollRoom.localParticipant.publishData(data, { reliable: true });
+      void unblockFromLiveAction(liveSessionId, identity).then((res) => {
+        if (!res.ok) {
+          toast.error(res.error ?? "Could not restore access.");
+          return;
+        }
+        toast.success(name ? `${name} can rejoin.` : "Access restored.");
+      });
+    },
+    [liveSessionId, unblockFromLiveAction, pollRoom]
+  );
+
+  const handleRemoveFromLive = React.useCallback(
+    (identity: string, name: string) => {
+      if (!liveSessionId || !blockFromLiveAction) return;
+      // Optimistic local update. The banned target will also see the message
+      // via the broadcast below and disconnect itself.
+      setLiveBanned((prev) => {
+        const next = new Map(prev);
+        next.set(identity, name);
+        return next;
+      });
+      // Broadcast first so the target's client can show a friendly toast
+      // before the WebRTC connection drops from the server-side kick.
+      const data = encodeChatModMsg({ type: "participant_ban", identity, name });
+      void pollRoom.localParticipant.publishData(data, { reliable: true });
+      // Server-side: kick + record the ban so they can't rejoin.
+      void blockFromLiveAction(liveSessionId, identity, name).then((res) => {
+        if (!res.ok) {
+          // Revert on failure — leave the client-side broadcast in place so
+          // clients that already applied it aren't left inconsistent, but
+          // surface the error to the host.
+          setLiveBanned((prev) => {
+            if (!prev.has(identity)) return prev;
+            const next = new Map(prev);
+            next.delete(identity);
+            return next;
+          });
+          toast.error(res.error ?? "Could not remove participant.");
+          return;
+        }
+        toast.success(`${name} removed from the session.`, {
+          action: {
+            label: "Undo",
+            onClick: () => handleUnbanFromLive(identity),
+          },
+          duration: 8000,
+        });
+      });
+    },
+    [liveSessionId, blockFromLiveAction, pollRoom, handleUnbanFromLive]
+  );
+
   // Data channel listener for breakout room messages (students only).
   React.useEffect(() => {
     if (isHost) return; // host never moves to a breakout room
@@ -865,9 +1090,77 @@ function RoomContent({
     setShowWhiteboard((v) => {
       const next = !v;
       if (next && !wbEverOpened) setWbEverOpened(true);
+      // Host presenting the board pushes it to every viewer so they don't
+      // have to click Board themselves. Non-hosts toggling only affects their
+      // local view.
+      if (isHost) {
+        void pollRoom.localParticipant
+          .publishData(
+            encodeWBMsg({ type: "wb_present", visible: next }),
+            { reliable: true }
+          )
+          .catch(() => {});
+      }
       return next;
     });
   }
+
+  // ── Whiteboard presenting sync ─────────────────────────────────────────────
+  // When the host toggles the board, every non-host client auto-opens (or
+  // auto-closes) their whiteboard viewer. A late joiner asks with a query and
+  // any presenting host replies. Keep the showWhiteboard value in a ref so
+  // the sync-request responder always sees the latest state.
+  const showWhiteboardRef = React.useRef(showWhiteboard);
+  React.useEffect(() => {
+    showWhiteboardRef.current = showWhiteboard;
+  }, [showWhiteboard]);
+
+  React.useEffect(() => {
+    function handleData(payload: Uint8Array) {
+      const msg = decodeWBMsg(payload);
+      if (!msg) return;
+      if (msg.type === "wb_present") {
+        if (isHost) return; // hosts drive presenting; they don't follow it
+        setShowWhiteboard(msg.visible);
+        if (msg.visible) setWbEverOpened(true);
+      } else if (msg.type === "wb_present_query") {
+        // Only a presenting host answers. Multiple presenters would each
+        // reply — the client just applies the last one.
+        if (!isHost || !showWhiteboardRef.current) return;
+        void pollRoom.localParticipant
+          .publishData(
+            encodeWBMsg({ type: "wb_present", visible: true }),
+            { reliable: true }
+          )
+          .catch(() => {});
+      }
+    }
+    pollRoom.on(RoomEvent.DataReceived, handleData);
+    return () => {
+      pollRoom.off(RoomEvent.DataReceived, handleData);
+    };
+  }, [pollRoom, isHost]);
+
+  // On connect, non-hosts ask "is anyone presenting?" so joining mid-session
+  // catches up without the host having to re-toggle.
+  React.useEffect(() => {
+    if (isHost) return;
+    function askIfPresenting() {
+      void pollRoom.localParticipant
+        .publishData(encodeWBMsg({ type: "wb_present_query" }), {
+          reliable: true,
+        })
+        .catch(() => {});
+    }
+    if (pollRoom.state === ConnectionState.Connected) {
+      askIfPresenting();
+    } else {
+      pollRoom.once(RoomEvent.Connected, askIfPresenting);
+      return () => {
+        pollRoom.off(RoomEvent.Connected, askIfPresenting);
+      };
+    }
+  }, [pollRoom, isHost]);
 
   function handleToggleChat() {
     setShowChat((v) => {
@@ -1010,7 +1303,7 @@ function RoomContent({
         showModerator={showModerator}
         onToggleModerator={isHost && liveSessionId && moderationActions ? handleToggleModerator : undefined}
         showChat={showChat}
-        onToggleChat={liveSessionId && sendMessageAction && getChatHistoryAction ? handleToggleChat : undefined}
+        onToggleChat={liveSessionId ? handleToggleChat : undefined}
         chatUnread={chatUnread}
         onOpenCreatePoll={isHost && liveSessionId && createPollAction ? () => setShowCreatePoll((v) => !v) : undefined}
         hasActivePoll={!!activePoll}
@@ -1032,12 +1325,15 @@ function RoomContent({
       {/* Main content area */}
       {isHost ? (
         <div className="relative flex min-h-0 flex-1 flex-col md:flex-row">
-          {/* Room content — shrinks when a side panel is open (desktop only; panels overlay on mobile) */}
+          {/* Room content — shrinks when a side panel is open (desktop only; panels overlay on mobile).
+              Chat + Moderator are absolutely positioned, so we reserve space with a margin-end.
+              Q&A and Breakout are flex-flow siblings — flex-1 already shrinks to fit them; adding
+              a margin here would double-count and leave a big empty gap next to the panel. */}
           <div
             className={cn(
               "relative min-h-0 flex-1",
               showModerator && "md:me-72",
-              (showChat || showQA || showBreakout) && "md:me-80"
+              showChat && "md:me-80"
             )}
           >
             <div
@@ -1108,14 +1404,24 @@ function RoomContent({
               isLocked={isLocked ?? false}
               actions={moderationActions}
               onLockedChange={onLockedChange ?? (() => {})}
+              onBlockFromLive={
+                blockFromLiveAction ? handleRemoveFromLive : undefined
+              }
             />
           )}
           {/* Chat panel */}
-          {showChat && liveSessionId && sendMessageAction && getChatHistoryAction && (
+          {showChat && liveSessionId && (
             <ChatPanel
               liveSessionId={liveSessionId}
               sendMessageAction={sendMessageAction}
               getChatHistoryAction={getChatHistoryAction}
+              isHost={isHost}
+              blockedIdentities={chatBlocked}
+              bannedIdentities={liveBanned}
+              onBlock={handleChatBlock}
+              onUnblock={handleChatUnblock}
+              onRemoveFromLive={blockFromLiveAction ? handleRemoveFromLive : undefined}
+              onUnbanFromLive={unblockFromLiveAction ? handleUnbanFromLive : undefined}
             />
           )}
           {/* Q&A panel (host) */}
@@ -1156,7 +1462,10 @@ function RoomContent({
             <div
               className={cn(
                 "relative min-h-0 flex-1",
-                (showChat || showQA) && "md:me-80"
+                // Chat is absolutely positioned so we reserve space with a
+                // margin. Q&A is a flex-flow sibling — flex-1 already shrinks
+                // for it.
+                showChat && "md:me-80"
               )}
             >
               <div
@@ -1177,6 +1486,7 @@ function RoomContent({
                   <WhiteboardPanel
                     liveSessionId={liveSessionId}
                     initialSnapshot={initialWhiteboardSnapshot}
+                    viewer
                   />
                 </div>
               )}
@@ -1189,11 +1499,14 @@ function RoomContent({
               />
             )}
             {/* Chat panel for students */}
-            {showChat && liveSessionId && sendMessageAction && getChatHistoryAction && (
+            {showChat && liveSessionId && (
               <ChatPanel
                 liveSessionId={liveSessionId}
                 sendMessageAction={sendMessageAction}
                 getChatHistoryAction={getChatHistoryAction}
+                isHost={false}
+                blockedIdentities={chatBlocked}
+                bannedIdentities={liveBanned}
               />
             )}
             {/* Q&A panel (student) */}
@@ -1238,6 +1551,8 @@ export function LiveRoom({
   stopRecordingAction,
   sendMessageAction,
   getChatHistoryAction,
+  blockFromLiveAction,
+  unblockFromLiveAction,
   initialWhiteboardSnapshot,
   saveWhiteboardSnapshotAction,
   createPollAction,
@@ -1268,6 +1583,8 @@ export function LiveRoom({
   stopRecordingAction?: (liveSessionId: string) => Promise<{ ok: boolean; error?: string }>;
   sendMessageAction?: (liveSessionId: string, body: string) => Promise<{ ok: boolean; error?: string }>;
   getChatHistoryAction?: (liveSessionId: string, limit?: number) => Promise<{ ok: true; data: ChatMessage[] } | { ok: false; error: string }>;
+  blockFromLiveAction?: (liveSessionId: string, identity: string, displayName: string) => Promise<{ ok: boolean; error?: string }>;
+  unblockFromLiveAction?: (liveSessionId: string, identity: string) => Promise<{ ok: boolean; error?: string }>;
   initialWhiteboardSnapshot?: TLEditorSnapshot | null;
   saveWhiteboardSnapshotAction?: (liveSessionId: string, snapshot: object) => Promise<{ ok: boolean; error?: string }>;
   createPollAction?: (liveSessionId: string, question: string, options: string[]) => Promise<{ ok: true; data: { id: string; question: string; options: string[] } } | { ok: false; error: string }>;
@@ -1325,6 +1642,8 @@ export function LiveRoom({
     stopRecordingAction,
     sendMessageAction,
     getChatHistoryAction,
+    blockFromLiveAction,
+    unblockFromLiveAction,
     initialWhiteboardSnapshot,
     saveWhiteboardSnapshotAction,
     createPollAction,

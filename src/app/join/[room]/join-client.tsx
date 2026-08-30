@@ -8,7 +8,12 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LiveRoom } from "@/components/livekit/live-room";
-import { guestTokenAction } from "./actions";
+import {
+  guestTokenAction,
+  askQuestionGuestAction,
+  upvoteQuestionGuestAction,
+  updateQuestionStatusGuestAction,
+} from "./actions";
 
 // sessionStorage key for the remembered guest name for a given room.
 // Keyed per room so joining a different session prompts for name again.
@@ -163,6 +168,13 @@ export function JoinClient({ roomName }: { roomName: string }) {
         url={session.url}
         room={roomName}
         onLeave={() => setSession(null)}
+        // Enable ephemeral chat + moderation + Q&A for guests. Room name
+        // doubles as session id — all state travels over the LiveKit data
+        // channel only (no server-side persistence for anonymous guests).
+        liveSessionId={roomName}
+        askQuestionAction={askQuestionGuestAction}
+        upvoteQuestionAction={upvoteQuestionGuestAction}
+        updateQuestionStatusAction={updateQuestionStatusGuestAction}
       />
     );
   }

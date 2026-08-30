@@ -11,6 +11,7 @@ import {
   Mic,
   MicOff,
   Shield,
+  UserX,
   Users,
   Video,
   VideoOff,
@@ -33,6 +34,11 @@ export type ModerationActions = {
   muteAll: (liveSessionId: string) => ActionResult;
   toggleLock: (liveSessionId: string) => Promise<{ ok: boolean; error?: string; data?: { locked: boolean } }>;
 };
+
+// Optional callback wired from LiveRoom when blockFromLiveAction was passed in.
+// Separate from ModerationActions so the existing panel signature stays stable
+// for pages that don't provide it.
+export type BlockFromLive = (identity: string, displayName: string) => void;
 
 // ── Moderator panel toggle button (used inside RoomHeader) ────────────────────
 
@@ -73,11 +79,13 @@ export function ModeratorPanel({
   isLocked,
   actions,
   onLockedChange,
+  onBlockFromLive,
 }: {
   liveSessionId: string;
   isLocked: boolean;
   actions: ModerationActions;
   onLockedChange: (locked: boolean) => void;
+  onBlockFromLive?: BlockFromLive;
 }) {
   const participants = useParticipants();
   const room = useRoomContext();
@@ -302,14 +310,14 @@ export function ModeratorPanel({
                         <span>{canPublish ? "Revoke" : "Allow mic"}</span>
                       </Button>
 
-                      {/* Kick */}
+                      {/* Kick (temporary — they can rejoin) */}
                       <Button
                         size="sm"
                         variant="ghost"
                         disabled={!!pending[`kick-${p.identity}`]}
                         onClick={() => void handleKick(p.identity)}
-                        className="ms-auto h-6 w-6 p-0 text-red-400/60 hover:bg-red-500/10 hover:text-red-400"
-                        title="Remove from room"
+                        className="ms-auto h-6 w-6 p-0 text-white/40 hover:bg-white/10 hover:text-white"
+                        title="Remove from room (they can rejoin)"
                         aria-label="Remove from room"
                       >
                         {pending[`kick-${p.identity}`] ? (
@@ -318,6 +326,22 @@ export function ModeratorPanel({
                           <X className="size-3" />
                         )}
                       </Button>
+
+                      {/* Block from live (permanent for this session — cannot rejoin) */}
+                      {onBlockFromLive && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            onBlockFromLive(p.identity, p.name || p.identity)
+                          }
+                          className="h-6 w-6 p-0 text-red-400/60 hover:bg-red-500/10 hover:text-red-400"
+                          title="Block from this session (cannot rejoin)"
+                          aria-label="Block from this session"
+                        >
+                          <UserX className="size-3" />
+                        </Button>
+                      )}
                     </div>
                   )}
                 </li>

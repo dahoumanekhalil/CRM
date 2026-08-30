@@ -17,6 +17,11 @@ import {
   kickAction,
   muteAllAction,
   toggleLockAction,
+  blockFromLiveAction,
+  unblockFromLiveAction,
+  askQuestionEphemeralAction,
+  upvoteQuestionEphemeralAction,
+  updateQuestionStatusEphemeralAction,
 } from "./actions";
 
 // ── Lobby ─────────────────────────────────────────────────────────────────────
@@ -152,6 +157,11 @@ export function LiveTestClient() {
           muteAll: muteAllAction,
           toggleLock: toggleLockAction,
         }}
+        blockFromLiveAction={blockFromLiveAction}
+        unblockFromLiveAction={unblockFromLiveAction}
+        askQuestionAction={askQuestionEphemeralAction}
+        upvoteQuestionAction={upvoteQuestionEphemeralAction}
+        updateQuestionStatusAction={updateQuestionStatusEphemeralAction}
       />
     );
   }

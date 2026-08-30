@@ -82,24 +82,36 @@ const LOCAL_ASSET_URLS: TLUiAssetUrlOverrides = {
 // Messages sent over the LiveKit data channel to sync whiteboard state.
 // Full-snapshot sync is simpler than diff-based sync for a Phase 1 POC and
 // still fast enough: tldraw snapshots are typically < 50 KB.
+//
+// wb_present / wb_present_query drive the "host is sharing the board" UX so
+// viewers auto-open the panel when the trainer starts presenting.
 
-type WBMessage =
+export type WBMessage =
   | { type: "wb_snapshot"; snapshot: TLEditorSnapshot }
-  | { type: "wb_request" }; // new participant asks for current state
+  | { type: "wb_request" } // new participant asks for current state
+  | { type: "wb_present"; visible: boolean }
+  | { type: "wb_present_query" };
 
 const ENC = new TextEncoder();
 const DEC = new TextDecoder();
 
-function encodeMsg(msg: WBMessage): Uint8Array<ArrayBuffer> {
+export function encodeWBMsg(msg: WBMessage): Uint8Array<ArrayBuffer> {
   // TextEncoder.encode() always uses a regular (non-shared) ArrayBuffer in
   // practice; the cast tells TypeScript that explicitly.
   return ENC.encode(JSON.stringify(msg)) as unknown as Uint8Array<ArrayBuffer>;
 }
 
-function decodeMsg(payload: Uint8Array): WBMessage | null {
+const WB_MSG_TYPES = new Set([
+  "wb_snapshot",
+  "wb_request",
+  "wb_present",
+  "wb_present_query",
+]);
+
+export function decodeWBMsg(payload: Uint8Array): WBMessage | null {
   try {
     const obj = JSON.parse(DEC.decode(payload)) as { type?: string };
-    if (obj.type === "wb_snapshot" || obj.type === "wb_request") {
+    if (obj.type && WB_MSG_TYPES.has(obj.type)) {
       return obj as WBMessage;
     }
     return null; // not a whiteboard message — ignore
@@ -115,6 +127,7 @@ export function WhiteboardPanel({
   initialSnapshot,
   saveSnapshotAction,
   readOnly = false,
+  viewer = false,
 }: {
   liveSessionId?: string;
   initialSnapshot?: TLEditorSnapshot | null;
@@ -122,29 +135,39 @@ export function WhiteboardPanel({
     liveSessionId: string,
     snapshot: object
   ) => Promise<{ ok: boolean; error?: string }>;
+  // Truly static — no live sync at all. Used for post-session recap views.
   readOnly?: boolean;
+  // Live viewer — receives snapshot updates but can't edit or publish. Used
+  // by non-hosts when the trainer is presenting the board.
+  viewer?: boolean;
 }) {
   const room = useRoomContext();
   const editorRef = React.useRef<Editor | null>(null);
 
+  // Editor = can draw and publish. Viewer/recap = read-only in tldraw and
+  // never publishes to the data channel.
+  const canEdit = !readOnly && !viewer;
+
   // ── Receive messages from remote participants ───────────────────────────────
   React.useEffect(() => {
-    if (readOnly) return; // read-only panels don't participate in live sync
+    if (readOnly) return; // recap mode — no live sync at all
 
     function onData(payload: Uint8Array) {
       const editor = editorRef.current;
       if (!editor) return;
-      const msg = decodeMsg(payload);
+      const msg = decodeWBMsg(payload);
       if (!msg) return;
 
       if (msg.type === "wb_snapshot") {
         editor.store.mergeRemoteChanges(() => {
           editor.loadSnapshot(msg.snapshot);
         });
-      } else if (msg.type === "wb_request") {
+      } else if (msg.type === "wb_request" && canEdit) {
+        // Only editors respond to sync requests — viewers don't hold
+        // authoritative state.
         const snapshot = editor.getSnapshot();
         void room.localParticipant
-          .publishData(encodeMsg({ type: "wb_snapshot", snapshot }), {
+          .publishData(encodeWBMsg({ type: "wb_snapshot", snapshot }), {
             reliable: true,
           })
           .catch(() => {});
@@ -155,7 +178,7 @@ export function WhiteboardPanel({
     return () => {
       room.off(RoomEvent.DataReceived, onData);
     };
-  }, [room, readOnly]);
+  }, [room, readOnly, canEdit]);
 
   // ── Mount the tldraw editor ────────────────────────────────────────────────
   function handleMount(editor: Editor): (() => void) | void {
@@ -169,17 +192,19 @@ export function WhiteboardPanel({
       });
     }
 
-    if (readOnly) {
-      // Read-only mode: disable editing, no sync.
+    if (!canEdit) {
       editor.updateInstanceState({ isReadonly: true });
-      return;
     }
 
-    // Request live state from any participant already in the room.
-    // Their response (wb_snapshot) will override the DB snapshot if more recent.
+    if (readOnly) return; // recap: nothing else to wire up
+
+    // Request live state from any participant already in the room. Editors
+    // AND viewers do this so they don't start blank when joining mid-session.
     void room.localParticipant
-      .publishData(encodeMsg({ type: "wb_request" }), { reliable: true })
+      .publishData(encodeWBMsg({ type: "wb_request" }), { reliable: true })
       .catch(() => {});
+
+    if (!canEdit) return; // viewer: no publishing setup
 
     // Real-time sync: publish full snapshot on local changes (300 ms debounce).
     let rtTimer: ReturnType<typeof setTimeout> | null = null;
@@ -193,7 +218,7 @@ export function WhiteboardPanel({
         rtTimer = setTimeout(() => {
           const snapshot = editor.getSnapshot();
           void room.localParticipant
-            .publishData(encodeMsg({ type: "wb_snapshot", snapshot }), {
+            .publishData(encodeWBMsg({ type: "wb_snapshot", snapshot }), {
               reliable: true,
             })
             .catch(() => {});
