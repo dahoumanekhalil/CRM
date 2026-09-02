@@ -60,6 +60,7 @@ function toDefaults(lead: LeadDetail): FormInput {
     lastName: lead.lastName ?? "",
     email: lead.email ?? "",
     phone: lead.phone ?? "",
+    city: ((lead as Record<string, unknown>).city as string | null) ?? "",
     preferredCallTime: (lead as Record<string, unknown>).preferredCallTime as string ?? "",
     // FOLLOW_UP is a legacy status — coerce to INTERESTED for the form picker.
     status: lead.status === "FOLLOW_UP" ? "INTERESTED" : lead.status,
@@ -184,13 +185,13 @@ export function EditLeadSheet({
               />
               <FormField
                 control={form.control}
-                name="preferredCallTime"
+                name="city"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Best time to call</FormLabel>
+                    <FormLabel>City</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="e.g. After 3 PM, Mornings"
+                        placeholder="e.g. Algiers"
                         {...field}
                         value={field.value ?? ""}
                       />
@@ -200,6 +201,24 @@ export function EditLeadSheet({
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="preferredCallTime"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Best time to call</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="e.g. Morning, After 3 PM"
+                      {...field}
+                      value={field.value ?? ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <div className="grid grid-cols-2 gap-3">
               <FormField

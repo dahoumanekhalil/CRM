@@ -5,6 +5,7 @@ import {
   type ColumnDef,
   type SortingState,
   type RowSelectionState,
+  type VisibilityState,
   flexRender,
   getCoreRowModel,
   useReactTable,
@@ -14,6 +15,9 @@ declare module "@tanstack/react-table" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface ColumnMeta<TData, TValue> {
     className?: string;
+    // Human label used by the column visibility menu when the header itself
+    // isn't a plain string (e.g. it renders a sortable button or an icon).
+    label?: string;
   }
 }
 
@@ -40,6 +44,9 @@ interface DataTableProps<TData, TValue> {
   // Row selection.
   rowSelection?: RowSelectionState;
   onRowSelectionChange?: React.Dispatch<React.SetStateAction<RowSelectionState>>;
+  // Column visibility.
+  columnVisibility?: VisibilityState;
+  onColumnVisibilityChange?: React.Dispatch<React.SetStateAction<VisibilityState>>;
   getRowId?: (row: TData) => string;
   getRowClassName?: (row: TData) => string | undefined;
   className?: string;
@@ -55,6 +62,8 @@ export function DataTable<TData, TValue>({
   onSortingChange,
   rowSelection,
   onRowSelectionChange,
+  columnVisibility,
+  onColumnVisibilityChange,
   getRowId,
   getRowClassName,
   className,
@@ -65,9 +74,11 @@ export function DataTable<TData, TValue>({
   const state: {
     sorting?: SortingState;
     rowSelection?: RowSelectionState;
+    columnVisibility?: VisibilityState;
   } = {};
   if (sorting !== undefined) state.sorting = sorting;
   if (rowSelection !== undefined) state.rowSelection = rowSelection;
+  if (columnVisibility !== undefined) state.columnVisibility = columnVisibility;
 
   const table = useReactTable({
     data,
@@ -75,6 +86,7 @@ export function DataTable<TData, TValue>({
     state,
     onSortingChange,
     onRowSelectionChange,
+    onColumnVisibilityChange,
     getRowId,
     getCoreRowModel: getCoreRowModel(),
     manualSorting: true,

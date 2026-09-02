@@ -124,6 +124,7 @@ model Lead {
   lastName   String?
   email      String?
   phone      String?
+  city       String?   // free text — where the lead lives (used to filter by geography)
   preferredCallTime String?   // e.g. "Morning", "After 3 PM", free text from lead
   status     LeadStatus @default(NEW)
   source     String?
@@ -173,6 +174,7 @@ model Lead {
   @@index([courseId])
   @@index([interestedSessionId])
   @@index([createdAt])   // dashboard KPIs + reports use 30-day windows on this field
+  @@index([city])        // multi-filter by geography (city + call-time queries)
 }
 
 enum LeadStatus {

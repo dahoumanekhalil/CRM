@@ -28,6 +28,12 @@ export async function createCommunication(
   const d = parsed.data;
   const emptyToNull = (v: string) => (v.trim() === "" ? null : v);
 
+  // `leadId` / `studentId` come in as `""` from the form when the sheet is
+  // opened scoped to only one of them — `??` doesn't collapse empty strings,
+  // so we'd try to link the row to id="" and hit a FK violation.
+  const leadIdOrNull = d.leadId && d.leadId.trim() !== "" ? d.leadId : null;
+  const studentIdOrNull = d.studentId && d.studentId.trim() !== "" ? d.studentId : null;
+
   try {
     const row = await prisma.communication.create({
       data: {
@@ -37,28 +43,28 @@ export async function createCommunication(
         body: emptyToNull(d.body),
         sentAt: d.sentAt ? new Date(d.sentAt) : null,
         sentById: session.user.id,
-        leadId: d.leadId ?? null,
-        studentId: d.studentId ?? null,
+        leadId: leadIdOrNull,
+        studentId: studentIdOrNull,
       },
       select: { id: true },
     });
 
     // Keep lastContactedAt current when a real interaction is logged.
-    if (d.leadId && d.type !== "NOTE") {
+    if (leadIdOrNull && d.type !== "NOTE") {
       await prisma.lead.update({
-        where: { id: d.leadId },
+        where: { id: leadIdOrNull },
         data: { lastContactedAt: d.sentAt ? new Date(d.sentAt) : new Date() },
       });
     }
 
-    if (d.leadId) revalidatePath(`/leads/${d.leadId}`);
-    if (d.studentId) revalidatePath(`/students/${d.studentId}`);
+    if (leadIdOrNull) revalidatePath(`/leads/${leadIdOrNull}`);
+    if (studentIdOrNull) revalidatePath(`/students/${studentIdOrNull}`);
 
-    if (d.leadId) {
+    if (leadIdOrNull) {
       void recordActivity({
         type: "communication.logged",
         entity: "Lead",
-        entityId: d.leadId,
+        entityId: leadIdOrNull,
         userId: session.user.id,
         meta: {
           communicationType: d.type,
@@ -68,11 +74,11 @@ export async function createCommunication(
         },
       });
     }
-    if (d.studentId) {
+    if (studentIdOrNull) {
       void recordActivity({
         type: "communication.logged",
         entity: "Student",
-        entityId: d.studentId,
+        entityId: studentIdOrNull,
         userId: session.user.id,
         meta: {
           communicationType: d.type,

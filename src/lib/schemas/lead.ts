@@ -45,6 +45,7 @@ export const createLeadSchema = z.object({
       { message: "Enter a valid email" }
     ),
   phone: z.string().trim().max(40).default(""),
+  city: z.string().trim().max(80).default(""),
   preferredCallTime: z.string().trim().max(100).default(""),
   status: z.enum(VISIBLE_LEAD_STATUSES).default("NEW"),
   source: z.string().trim().max(80).default(""),
@@ -72,6 +73,28 @@ export type LeadFollowUpFilter = (typeof LEAD_FOLLOW_UP_FILTERS)[number];
 export const LEAD_OWNERSHIP_FILTERS = ["all", "mine", "unassigned"] as const;
 export type LeadOwnershipFilter = (typeof LEAD_OWNERSHIP_FILTERS)[number];
 
+// Call-time presets. "ALL" disables the filter; the others do a
+// case-insensitive `contains` match against `preferredCallTime`. This lets
+// leads with free-form values like "morning, after 9" still show up under the
+// "Morning" preset while giving employees a clean quick-pick UI.
+export const LEAD_CALL_TIME_FILTERS = [
+  "ALL",
+  "morning",
+  "afternoon",
+  "evening",
+  "anytime",
+] as const;
+export type LeadCallTimeFilter = (typeof LEAD_CALL_TIME_FILTERS)[number];
+
+// Substrings we match `preferredCallTime` against for each preset. Kept
+// generous — free-text answers vary wildly ("morning", "AM", "before noon"…).
+export const LEAD_CALL_TIME_MATCHERS: Record<Exclude<LeadCallTimeFilter, "ALL">, string[]> = {
+  morning: ["morning", "am", "صباح"],
+  afternoon: ["afternoon", "midday", "noon", "ظهر"],
+  evening: ["evening", "night", "pm", "مساء"],
+  anytime: ["anytime", "any time", "any", "flexible", "أي وقت"],
+};
+
 export const listLeadsSchema = z.object({
   q: z.string().trim().max(120).optional(),
   status: z
@@ -81,10 +104,22 @@ export const listLeadsSchema = z.object({
   followUp: z.enum(LEAD_FOLLOW_UP_FILTERS).default("ALL"),
   ownership: z.enum(LEAD_OWNERSHIP_FILTERS).default("all"),
   highPriority: z.preprocess((v) => v === "true" || v === true, z.boolean()).default(false),
+  // Free-text city filter — case-insensitive `contains` match server-side so
+  // "algiers" also matches records saved as "Algiers, Algeria".
+  city: z.string().trim().max(80).optional(),
+  callTime: z.enum(LEAD_CALL_TIME_FILTERS).default("ALL"),
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(5).max(200).default(25),
+  pageSize: z.coerce.number().int().min(5).max(500).default(25),
   sortBy: z
-    .enum(["createdAt", "firstName", "status"])
+    .enum([
+      "createdAt",
+      "firstName",
+      "status",
+      "email",
+      "phone",
+      "city",
+      "callTime",
+    ])
     .default("createdAt"),
   sortDir: z.enum(["asc", "desc"]).default("desc"),
 });

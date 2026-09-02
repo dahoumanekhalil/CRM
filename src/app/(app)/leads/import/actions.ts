@@ -10,6 +10,8 @@ export interface ImportLeadRow {
   lastName?: string;
   email?: string;
   phone?: string;
+  city?: string;
+  preferredCallTime?: string;
   notes?: string;
   source?: string;
   tags?: string[];
@@ -69,6 +71,10 @@ export async function importLeads(
           lastName: row.lastName?.trim() || null,
           email: row.email ? (normalizeEmail(row.email) || null) : null,
           phone: row.phone ? (normalizePhone(row.phone) || null) : null,
+          // city / preferredCallTime were added by migrations post the last
+          // `prisma generate` — see actions.ts for the same workaround.
+          city: (row.city?.trim() || null) as never,
+          preferredCallTime: (row.preferredCallTime?.trim() || null) as never,
           notes: row.notes?.trim() || null,
           source: options.source?.trim() || row.source?.trim() || null,
           tags: row.tags ?? [],

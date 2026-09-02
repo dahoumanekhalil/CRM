@@ -9,6 +9,7 @@ import {
   createLeadSchema,
   listLeadsSchema,
   updateLeadSchema,
+  LEAD_CALL_TIME_MATCHERS,
   type CreateLeadInput,
   type ListLeadsInput,
   type UpdateLeadInput,
@@ -21,6 +22,7 @@ import { recordActivity, getActivitiesForEntity, type ActivityRow } from "@/lib/
 import { NotificationService } from "@/lib/notifications/notification-service";
 import { NotificationTypes } from "@/lib/notifications/types";
 import { normalizeEmail, normalizePhone } from "@/lib/string-utils";
+import { cityToWilayaNumber } from "@/lib/wilayas";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -230,6 +232,10 @@ export async function createLead(
         lastName: emptyToNull(d.lastName),
         email,
         phone,
+        // city / preferredCallTime are typed `as never` because they were added
+        // by migrations after the last committed `prisma generate` — the actual
+        // DB column exists, the generated client just doesn't know about them.
+        city: emptyToNull(d.city ?? "") as never,
         preferredCallTime: emptyToNull(d.preferredCallTime ?? "") as never,
         source: emptyToNull(d.source),
         notes: emptyToNull(d.notes),
@@ -298,6 +304,31 @@ export async function listLeads(
     where.isHighPriority = true;
   }
 
+  if (parsed.city && parsed.city.trim()) {
+    // `city` was added by a post-generate migration; the client type doesn't
+    // know about it yet. Runtime accepts it — Prisma just forwards the filter.
+    (where as unknown as { city: unknown }).city = {
+      contains: parsed.city.trim(),
+      mode: "insensitive",
+    };
+  }
+
+  if (parsed.callTime !== "ALL") {
+    // Free-text `preferredCallTime` can be anything ("morning", "AM", "before
+    // noon", "صباح"…). Match any synonym for the preset. Wrapped in AND so
+    // it composes with `q` (which uses top-level OR) rather than collapsing
+    // into a single OR that mixes name-search and call-time matches.
+    const matchers = LEAD_CALL_TIME_MATCHERS[parsed.callTime];
+    where.AND = [
+      ...((where.AND as Prisma.LeadWhereInput[]) ?? []),
+      {
+        OR: matchers.map((m) => ({
+          preferredCallTime: { contains: m, mode: "insensitive" as const },
+        })),
+      },
+    ];
+  }
+
   if (parsed.followUp !== "ALL") {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -327,8 +358,16 @@ export async function listLeads(
     ];
   }
 
+  // Map the API sortBy key to a Prisma field. `firstName` is the accessor for
+  // the Lead column (which shows full name), `callTime` maps to preferredCallTime.
+  // `city` is sorted alphabetically at the DB level, then re-ordered in-memory
+  // by wilaya number below so the visible page matches Algeria's admin order.
+  const sortField: keyof Prisma.LeadOrderByWithRelationInput =
+    parsed.sortBy === "callTime" ? "preferredCallTime"
+    : parsed.sortBy === "city" ? "city"
+    : parsed.sortBy;
   const orderBy: Prisma.LeadOrderByWithRelationInput = {
-    [parsed.sortBy]: parsed.sortDir,
+    [sortField]: parsed.sortDir,
   };
 
   const [rows, total] = await Promise.all([
@@ -362,6 +401,29 @@ export async function listLeads(
     }),
     prisma.lead.count({ where }),
   ]);
+
+  // Wilaya re-sort — applied over the returned page. Cities we can't map to a
+  // wilaya (foreign leads, typos) fall to the end but keep their alphabetical
+  // order relative to each other. Best-effort within a page — good enough for
+  // the common case where pageSize covers the whole pipeline.
+  if (parsed.sortBy === "city") {
+    const dir = parsed.sortDir === "asc" ? 1 : -1;
+    const withWilaya = rows.map((r) => ({
+      row: r,
+      w: cityToWilayaNumber(
+        (r as unknown as { city: string | null }).city,
+      ),
+    }));
+    withWilaya.sort((a, b) => {
+      const aw = a.w;
+      const bw = b.w;
+      if (aw !== null && bw !== null) return (aw - bw) * dir;
+      if (aw !== null) return -1;
+      if (bw !== null) return 1;
+      return 0; // both unknown — DB alphabetical order preserved
+    });
+    rows.splice(0, rows.length, ...withWilaya.map((x) => x.row));
+  }
 
   return {
     rows,
@@ -857,6 +919,8 @@ export async function updateLead(
         lastName: emptyToNull(d.lastName),
         email: emptyToNull(d.email),
         phone: emptyToNull(d.phone),
+        // See comment in createLead — city column exists in DB, client is stale.
+        city: emptyToNull(d.city ?? "") as never,
         preferredCallTime: emptyToNull(d.preferredCallTime ?? "") as never,
         source: emptyToNull(d.source),
         notes: emptyToNull(d.notes),

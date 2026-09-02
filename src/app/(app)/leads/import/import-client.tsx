@@ -43,6 +43,8 @@ type LeadField =
   | "fullName"
   | "email"
   | "phone"
+  | "city"
+  | "preferredCallTime"
   | "notes"
   | "source"
   | "tags";
@@ -56,6 +58,8 @@ const FIELD_OPTIONS: { value: LeadField; label: string; required?: boolean }[] =
   { value: "fullName", label: "Full Name (auto-split)" },
   { value: "email", label: "Email" },
   { value: "phone", label: "Phone" },
+  { value: "city", label: "City" },
+  { value: "preferredCallTime", label: "Best time to call" },
   { value: "notes", label: "Notes" },
   { value: "source", label: "Source" },
   { value: "tags", label: "Tags (comma-separated)" },
@@ -115,6 +119,8 @@ function autoDetect(headers: string[]): LeadField[] {
     if (/^(full.?name|name|الاسم|nom.complet|client|customer|contact)$/.test(n)) return "fullName";
     if (/email|e-mail|mail|البريد/.test(n)) return "email";
     if (/phone|tel|mobile|gsm|هاتف|numéro|numero|cel/.test(n)) return "phone";
+    if (/^(city|ville|town|wilaya|مدينة|ولاية)$/.test(n)) return "city";
+    if (/(call.?time|best.?time|preferred.?time|when.?to.?call|وقت.?الاتصال)/.test(n)) return "preferredCallTime";
     if (/note|remark|comment|ملاحظ/.test(n)) return "notes";
     if (/^(source|from|channel|origine)$/.test(n)) return "source";
     if (/tag|label|categ/.test(n)) return "tags";
@@ -148,6 +154,8 @@ function buildRows(
       else if (field === "lastName") lead.lastName = lead.lastName || cell;
       else if (field === "email") lead.email = cell;
       else if (field === "phone") lead.phone = cell;
+      else if (field === "city") lead.city = cell;
+      else if (field === "preferredCallTime") lead.preferredCallTime = cell;
       else if (field === "notes") lead.notes = cell;
       else if (field === "source") lead.source = cell;
       else if (field === "tags") lead.tags = cell.split(",").map((t) => t.trim()).filter(Boolean);

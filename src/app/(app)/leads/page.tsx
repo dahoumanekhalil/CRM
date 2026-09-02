@@ -18,6 +18,8 @@ export default async function LeadsPage({
     followUp: typeof params.followUp === "string" ? params.followUp : undefined,
     ownership: typeof params.ownership === "string" ? params.ownership : undefined,
     highPriority: typeof params.highPriority === "string" ? params.highPriority : undefined,
+    city: typeof params.city === "string" ? params.city : undefined,
+    callTime: typeof params.callTime === "string" ? params.callTime : undefined,
     page: typeof params.page === "string" ? params.page : undefined,
     pageSize: typeof params.pageSize === "string" ? params.pageSize : undefined,
     sortBy: typeof params.sortBy === "string" ? params.sortBy : undefined,

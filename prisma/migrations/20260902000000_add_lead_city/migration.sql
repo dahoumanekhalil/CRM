@@ -1,0 +1,2 @@
+ALTER TABLE "Lead" ADD COLUMN IF NOT EXISTS "city" TEXT;
+CREATE INDEX IF NOT EXISTS "Lead_city_idx" ON "Lead"("city");
