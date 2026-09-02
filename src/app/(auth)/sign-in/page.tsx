@@ -28,8 +28,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Separator } from "@/components/ui/separator";
-import { GoogleIcon, GitHubIcon } from "@/components/primitives/brand-icons";
 
 const schema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -76,32 +74,6 @@ export default function SignInPage() {
         <CardDescription>Sign in to your Webscale workspace.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-2">
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => signIn("google", { callbackUrl })}
-          >
-            <GoogleIcon /> Continue with Google
-          </Button>
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => signIn("github", { callbackUrl })}
-          >
-            <GitHubIcon /> Continue with GitHub
-          </Button>
-        </div>
-
-        <div className="relative py-1">
-          <Separator />
-          <span className="absolute inset-0 -top-2 flex items-center justify-center">
-            <span className="bg-card px-2 text-xs uppercase tracking-wider text-muted-foreground">
-              or
-            </span>
-          </span>
-        </div>
-
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField

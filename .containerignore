@@ -1,0 +1,21 @@
+# Exclude from Podman build context
+node_modules
+.next
+.git
+coverage
+
+# _production/ itself must stay in context (Containerfile COPYs
+# _production/entrypoint.sh in the runner stage) — its secrets are
+# already excluded by the .env / .env.* rule below.
+
+# Dev/test files
+*.tsbuildinfo
+vitest.config.ts
+
+# Environment files (injected at runtime via the Quadlet EnvironmentFile=)
+.env
+.env.*
+
+# Prisma — only schema is needed; skip seeds
+prisma/*.ts
+prisma/*.mjs
